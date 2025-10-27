@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, os, glob
+import argparse, os, glob, re
 import numpy as np, pandas as pd
 
 A_PER_NM = 10.0
@@ -29,9 +29,14 @@ def parse_single_frame(path):
             return (xlo,xhi,ylo,yhi,zlo,zhi), ids, pos
     raise RuntimeError(f"No frame in {path}")
 
+def _step_key(path: str) -> int:
+    m = re.search(r"(\d+)(?:\D*)$", os.path.basename(path))
+    return int(m.group(1)) if m else 0
+
 def parse_sequence(pattern):
     frames=[]
-    for path in sorted(glob.glob(pattern)):
+    # Sort files by the numeric step embedded in the filename
+    for path in sorted(glob.glob(pattern), key=_step_key):
         with open(path,"r") as f:
             while True:
                 line=f.readline()

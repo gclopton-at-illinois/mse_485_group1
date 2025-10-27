@@ -162,7 +162,7 @@ import os, math, sys
 DATAFILE = r"""${DATAFILE}"""
 R0_nm    = float(r"""${R0}""")
 TE_BASE  = 300.0
-TE_CORE  = 5000.0
+TE_CORE  = 20000.0
 grid_A   = 1.0  # Å target spacing (Phase 0)
 
 # Parse xlo/xhi etc. from LAMMPS data file

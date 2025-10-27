@@ -19,7 +19,7 @@ fix fix_nvt interior nvt temp 300.0 300.0 ${Tdamp}
 fix_modify fix_nvt temp thermo_temp  # use the default thermo temperature compute
 
 # ---------- Pick short equilibration length (≈10% of total, min 1000 steps) ----------
-variable neq equal 100
+variable neq equal 2000 # ~1.0 ps warm-up at 0.5 fs (was: variable neq equal 100)
 print "Equilibration steps (neq) = ${neq} (Tdamp = ${Tdamp} ps)" append yes
 
 # ---------- Run equilibration -- ----

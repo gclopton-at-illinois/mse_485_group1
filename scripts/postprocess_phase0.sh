@@ -30,22 +30,28 @@ mkdir -p "$POST" "$FIGS"
 # Spike dump cadence: 100 steps at DT=0.0005 ps -> 0.05 ps between frames
 FRAME_DT_PS=${FRAME_DT_PS:-0.05}
 
-# 1) Radial density & R_track(t)  (pure NumPy)
+# 1) Radial density & R_track(t)  (pure NumPy)  — wider bins to reduce noise
 python "$REPO_ROOT/scripts/radial_density.py" \
   --pattern "$DUMPS/atoms.spike.*.lammpstrj" \
-  --outdir  "$POST"
+  --bin_A 2.0 \
+  --outdir "$POST"
 
-# 2) Defect density via displacement proxy (pure NumPy)
+# 2) Defect density via displacement proxy (Phase-0: reference = first spike frame)
+#    This makes n_def(t0)=0 and avoids the artificial early dip.
+FIRST=$(ls "$DUMPS"/atoms.spike.*.lammpstrj 2>/dev/null | sort -V | head -1 || true)
+[[ -n "$FIRST" && -f "$FIRST" ]] || { echo "ERROR: no spike frames found under $DUMPS"; exit 2; }
+
 python "$REPO_ROOT/scripts/ws_defects.py" \
   --pattern "$DUMPS/atoms.spike.*.lammpstrj" \
-  --ref     "$DUMPS/atoms.equil.lammpstrj" \
+  --ref     "$FIRST" \
   --frame_dt_ps "$FRAME_DT_PS" \
+  --disp_thr_A 0.6 \
   --out     "$POST/ndef_vs_time.csv"
 
 # 3) Core Tl(t) — pure NumPy (velocities)
 python "$REPO_ROOT/scripts/tl_core.py" \
   --pattern "$DUMPS/atoms.spike.*.lammpstrj" \
-  --r_core_nm 8.0 \
+  --r_core_nm 0.8 \
   --frame_dt_ps "$FRAME_DT_PS" \
   --out "$POST/Tl_core.csv"
 

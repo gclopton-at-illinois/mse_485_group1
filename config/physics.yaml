@@ -17,7 +17,7 @@ boundaries:
 
 time:
   dt_fs: 0.5               # MD time step Δt in femtoseconds
-  t_total_ps: 0.2          # total simulated time T_tot in picoseconds (driver computes nsteps = T_tot/dt)
+  t_total_ps: 20.0          # total simulated time T_tot in picoseconds (driver computes nsteps = T_tot/dt) (was 0.2 ps)
   # For Phase 0 smoke-test you can set steps_equil=0, steps_spike short in in.main.lmp.
 
 source:                     # cylindrical electron source used by USER–TTM

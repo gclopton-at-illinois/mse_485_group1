@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J ceo2_phase0
-#SBATCH -p eertekin
+#SBATCH -p mrsec
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 24:00:00
+#SBATCH -t 00:30:00
 # Always start in the repo root so relative paths resolve consistently
 #SBATCH -D /u/gclopton/scratch/lammps
 # Write SLURM’s logs to flat files (created by SLURM at launch)

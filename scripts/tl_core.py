@@ -6,7 +6,7 @@ restricting atoms to a cylinder r <= r_core_nm about the box center.
 Expects per-frame dumps with at least: id type x y z vx vy vz
 """
 
-import argparse, os, glob
+import argparse, os, glob, re
 import numpy as np, pandas as pd
 
 # ---- constants for LAMMPS metal units ----
@@ -17,9 +17,13 @@ A_PER_NM    = 10.0
 # Type → mass (amu) map (matches your input deck: mass 1 140.116; mass 2 15.999)
 MASS_AMU = {1: 140.116, 2: 15.999}
 
+def _step_key(path: str) -> int:
+    m = re.search(r"(\d+)(?:\D*)$", os.path.basename(path))
+    return int(m.group(1)) if m else 0
+
 def parse_sequence(pattern):
-    """Yield frames as (box, ids, types, pos, vel) for all files matching pattern."""
-    paths = sorted(glob.glob(pattern))
+    """Yield frames as (box, ids, types, pos, vel) for all files matching pattern in numeric order."""
+    paths = sorted(glob.glob(pattern), key=_step_key)
     if not paths:
         raise SystemExit(f"No spike dumps matched: {pattern}")
     for path in paths:
@@ -84,7 +88,11 @@ def main():
             t_list.append(f*args.frame_dt_ps)
             continue
         m_amu = np.vectorize(MASS_AMU.get)(types[mask])         # amu
-        v2    = np.einsum('ij,ij->i', vel[mask], vel[mask])     # (Å/ps)^2
+        # Remove center-of-mass drift before computing kinetic temperature
+        mcol  = m_amu[:,None]
+        vcm   = (mcol * vel[mask]).sum(axis=0) / m_amu.sum()
+        vrel  = vel[mask] - vcm
+        v2    = np.einsum('ij,ij->i', vrel, vrel)               # (Å/ps)^2
         KE_eV = 0.5 * MVV2E * m_amu * v2                        # eV per atom
         KE_tot = KE_eV.sum()
         Tl = (2.0/3.0) * (KE_tot / (n * KB_eV_per_K))

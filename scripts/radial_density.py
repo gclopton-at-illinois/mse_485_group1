@@ -32,10 +32,14 @@ def read_frames(pattern):
                     # Safer: re-open and parse with a small state machine per block.
                 # If we hit a dump with multiple frames, better to parse block-wise.
 
+def _step_key(path: str) -> int:
+    m = re.search(r"(\d+)(?:\D*)$", os.path.basename(path))
+    return int(m.group(1)) if m else 0
+
 def parse_lammpstrj(pattern):
-    """Return a list of (box, ids, types, pos, vel) per frame across all files matching pattern."""
+    """Return a list of (box, ids, types, pos, vel) per frame across all files matching pattern in numeric order."""
     frames = []
-    for path in sorted(glob.glob(pattern)):
+    for path in sorted(glob.glob(pattern), key=_step_key):
         with open(path, "r") as f:
             while True:
                 line = f.readline()

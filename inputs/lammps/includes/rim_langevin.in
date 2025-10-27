@@ -30,7 +30,9 @@ region rim_union union 4 rim_xlo rim_xhi rim_ylo rim_yhi
 group  rim region rim_union
 
 # Langevin thermostat on the rim only (interior integrates elsewhere)
-fix f_rim rim langevin ${RIM_TK} ${RIM_TK} ${RIM_GAMMA} ${rim_seed} zero yes
+#fix f_rim rim langevin ${RIM_TK} ${RIM_TK} ${RIM_GAMMA} ${rim_seed} zero yes
+variable rim_tau_ps equal 1.0/${RIM_GAMMA}
+fix f_rim rim langevin ${RIM_TK} ${RIM_TK} ${rim_tau_ps} ${rim_seed} zero yes
 
 # Optional sanity print
 print "rim_langevin: bxlo=${bxlo} bxhi=${bxhi} bylo=${bylo} byhi=${byhi} rim_wA=${rim_wA}" screen yes
