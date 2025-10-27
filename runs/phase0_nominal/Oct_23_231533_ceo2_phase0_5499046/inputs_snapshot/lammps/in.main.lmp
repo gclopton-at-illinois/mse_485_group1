@@ -1,0 +1,58 @@
+# in.main.lmp — Phase 0 (debug-friendly, line-flushed)
+
+echo            both
+units           ${UNITS}
+atom_style      charge
+boundary        ${BX} ${BY} ${BZ}
+
+# --- structure & masses (defines the box) ---
+read_data       ${DATAFILE}
+mass            1 140.116
+mass            2 15.999
+
+# ensure per-run subdirs exist on the compute node
+shell           mkdir -p ${OUTDIR}/logs
+shell           mkdir -p ${OUTDIR}/dumps
+shell           mkdir -p ${OUTDIR}/post
+
+# --- temperature compute (valid before any run) ---
+compute         t_all all temp
+
+# --- live thermo (AFTER box exists) ---
+thermo          100
+thermo_style    custom step time temp press pe ke evdwl ecoul etotal
+thermo_modify   flush yes
+thermo_modify   temp t_all
+
+# --- scalars for writers ---
+variable s   equal step
+variable T   equal c_t_all
+variable P   equal press
+variable PE  equal pe
+variable KE  equal ke
+variable ET  equal etotal
+
+# simple timeseries you can tail (written DURING runs)
+variable THFILE string ${OUTDIR}/dumps/thermo.tsv
+fix tsv all print 100 "${s} ${T} ${P} ${PE} ${KE} ${ET}" file ${THFILE} screen no title "step T(K) P(bar) PE(eV) KE(eV) ET(eV)"
+
+# optional: if you want a single line at step 0, uncomment the next two
+# run 0 post no
+# print "${s} ${T} ${P} ${PE} ${KE} ${ET}" file ${THFILE} screen no append yes
+
+# --- neighbor / timestep ---
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+timestep        ${DT}
+
+# --- electrostatics & short-range interactions ---
+include         inputs/lammps/includes/kspace_pppm.in
+include         inputs/lammps/includes/pair_ceo2_buck.in
+# include       inputs/lammps/includes/pair_zbl_overlay.in
+include         inputs/lammps/includes/rim_langevin.in
+
+# --- stages ---
+
+variable neq equal 0
+include         inputs/lammps/in.equil.lmp
+include         inputs/lammps/in.ttm_spike.lmp

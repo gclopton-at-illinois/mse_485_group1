@@ -1,0 +1,8 @@
+variable rc_buck equal 12.0
+pair_style   buck/coul/long ${rc_buck}
+pair_modify  mix arithmetic
+# IMPORTANT: this params file must emit all three buck/coul/long pair_coeff lines:
+#   pair_coeff 1 1 buck/coul/long A11 rho11 C11
+#   pair_coeff 1 2 buck/coul/long A12 rho12 C12
+#   pair_coeff 2 2 buck/coul/long A22 rho22 C22
+include inputs/lammps/includes/params/ceo2_buck.params

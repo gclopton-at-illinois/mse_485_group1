@@ -1,0 +1,49 @@
+# --- TTM spike stage: NVE on interior + USER-TTM electrons ---
+print "=== TTM spike stage: NVE (interior) + USER-TTM electron field ===" append yes
+
+# Interior = all atoms minus the x/y rim sponge from rim_langevin.in
+group interior subtract all rim
+
+# For logging only
+variable r0_A equal ${R0}*10.0
+print "TTM source via infile: r0 = ${R0} nm = ${r0_A} A ; Te.in=${TEF}" append yes
+
+# Lattice integrator
+fix f_nve interior nve
+
+# --- USER-TTM (Phase-0 placeholders; refine later) ---
+variable CE0    equal 1.0
+variable RHOE0  equal 1.0
+variable KE0    equal 1.0
+variable GP     equal 5.0
+variable GS     equal 0.0
+variable V0     equal 1.0
+
+# Grid sizes for ttm/grid arguments (approx. 1 Å spacing)
+variable iNX equal ceil(lx/1.0)
+variable iNY equal ceil(ly/1.0)
+variable iNZ equal ceil(lz/1.0)
+
+# Read the precomputed Te field from the runner
+fix f_ttm interior ttm/grid 12345 ${CE0} ${RHOE0} ${KE0} ${GP} ${GS} ${V0} ${iNX} ${iNY} ${iNZ} infile ${TEF}
+
+# Initialize computes/thermo after adding fixes
+run 0 post no
+
+# Spike length: NSTEPS - neq  (neq is defined in in.main.lmp)
+variable nspike equal ${NSTEPS}-${neq}
+print "Spike steps (nspike) = ${nspike}" append yes
+
+# Dump during the spike (for analyses)
+dump dspike all custom 100 ${OUTDIR}/dumps/atoms.spike.*.lammpstrj id type x y z vx vy vz q
+dump_modify dspike sort id
+
+# Run the spike
+run ${nspike}
+undump dspike
+
+# Cleanup
+unfix f_nve
+unfix f_ttm
+
+print "=== Spike complete; end of Phase 0 nominal shot ===" append yes
