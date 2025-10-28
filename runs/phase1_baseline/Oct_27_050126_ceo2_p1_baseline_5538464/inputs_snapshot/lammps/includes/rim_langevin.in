@@ -1,0 +1,44 @@
+# rim_langevin.in — x–y rim sponge (units metal)
+# Expects variables: RIM_WIDTH_NM (nm), RIM_GAMMA (ps^-1), RIM_TK (K), R0 (nm)
+
+# ---- Parameters & box edges ----
+variable rim_seed    equal 98765
+variable rim_wA      equal ${RIM_WIDTH_NM}*10.0     # Å
+
+# capture box edges to variables (numbers)
+variable bxlo        equal xlo
+variable bxhi        equal xhi
+variable bylo        equal ylo
+variable byhi        equal yhi
+
+# precompute slab bounds (use v_ prefix in regions)
+variable bxlo_hi     equal v_bxlo+v_rim_wA
+variable bxhi_lo     equal v_bxhi-v_rim_wA
+variable bylo_hi     equal v_bylo+v_rim_wA
+variable byhi_lo     equal v_byhi-v_rim_wA
+
+# four edge slabs, union into a single rim region/group
+region   rim_xlo     block  v_bxlo    v_bxlo_hi   INF INF   INF INF   units box
+region   rim_xhi     block  v_bxhi_lo v_bxhi      INF INF   INF INF   units box
+region   rim_ylo     block  INF INF   v_bylo      v_bylo_hi INF INF   units box
+region   rim_yhi     block  INF INF   v_byhi_lo   v_byhi    INF INF   units box
+region   rim_union   union  4 rim_xlo rim_xhi rim_ylo rim_yhi
+group    rim         region rim_union
+
+# ---- Langevin “sponge” on rim only, with energy tally ----
+# LAMMPS Langevin uses a *damping time* (tau), not gamma: tau = 1/gamma
+variable rim_tau_ps  equal 1.0/${RIM_GAMMA}
+fix       f_rim      rim   langevin ${RIM_TK} ${RIM_TK} ${rim_tau_ps} ${rim_seed} zero yes tally yes
+
+# ---- Geometry sanity check vs source radius r0 ----
+# Use built-in box lengths (Å) to avoid xlo/xhi arithmetic
+variable LxA            equal lx
+variable LyA            equal ly
+variable halfminA       equal 0.5*min(v_LxA,v_LyA)
+variable r_rim_start_A  equal v_halfminA-v_rim_wA    # no spaces around '-' to keep parser happy
+variable r0A            equal ${R0}*10.0
+variable ok_margin      equal v_r_rim_start_A-3.0*v_r0A
+
+print "rim_langevin: x=[${bxlo},${bxhi}] y=[${bylo},${byhi}] rim_wA=${rim_wA} Å  r_rim_start=${r_rim_start_A} Å  (3*r0=${r0A}*3=${=3.0*v_r0A})" screen yes
+if ("${ok_margin} < 0.0") then &
+  "print \"WARNING: rim may be too close to the heated core (r_rim_start < 3*r0). Consider reducing RIM_WIDTH_NM or enlarging the box.\" screen yes"

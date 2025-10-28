@@ -34,8 +34,8 @@ def fig_rho_radial(post, figs):
 def fig_ndef_time(post, figs):
     df = pd.read_csv(os.path.join(post, "ndef_vs_time.csv"))
     t  = df["t_ps"].to_numpy(); y = df.iloc[:,1].to_numpy()
-    peak = y.max()
-    # try to read t_half, t_1e
+    peak = np.nanmax(y)
+    # try to read t_half, t_1e (hide if NaN)
     t_half = t_1e = None
     meta = os.path.splitext(os.path.join(post,"ndef_vs_time.csv"))[0] + ".meta.txt"
     if os.path.exists(meta):
@@ -43,12 +43,46 @@ def fig_ndef_time(post, figs):
             for ln in fh:
                 if ln.startswith("t_half_ps"): t_half = float(ln.split("=")[1])
                 if ln.startswith("t_1e_ps"):   t_1e   = float(ln.split("=")[1])
+
+    # plateau-based rise-time markers (t50/t90)
+    k = max(3, int(0.1*len(y)))
+    plateau = float(np.nanmean(y[-k:]))
+
+    def cross_time(frac: float) -> float:
+        thr = frac * plateau
+        idx = np.where(y >= thr)[0]
+        if idx.size == 0:
+            return np.nan
+        j = int(idx[0])
+        if j == 0:
+            return float(t[0])
+        t0, t1 = t[j-1], t[j]
+        y0, y1 = y[j-1], y[j]
+        # linear interpolation
+        if y1 == y0:
+            return float(t1)
+        return float(t0 + (thr - y0) * (t1 - t0) / (y1 - y0))
+
+    t50 = cross_time(0.5)
+    t90 = cross_time(0.9)
+
     plt.figure()
     plt.plot(t, y, lw=2)
     plt.axhline(peak, ls=":", alpha=0.5)
-    if t_half is not None: plt.axvline(t_half, ls="--", alpha=0.7, label=r"$t_{1/2}$")
-    if t_1e  is not None:  plt.axvline(t_1e,  ls="--", alpha=0.5, label=r"$t_{1/e}$")
-    plt.xlabel("t [ps]"); plt.ylabel(r"defect density [nm$^{-3}$]"); plt.legend()
+    # legacy markers only if finite
+    if (t_half is not None) and np.isfinite(t_half):
+        plt.axvline(t_half, ls="--", alpha=0.7, label=r"$t_{1/2}$")
+    if (t_1e is not None) and np.isfinite(t_1e):
+        plt.axvline(t_1e,  ls="--", alpha=0.5, label=r"$t_{1/e}$")
+    # new rise-time markers
+    if np.isfinite(t50):
+        plt.axvline(t50, ls="--", alpha=0.7, label=f"t50={t50:.2f} ps")
+    if np.isfinite(t90):
+        plt.axvline(t90, ls="--", alpha=0.7, label=f"t90={t90:.2f} ps")
+    plt.xlabel("t [ps]"); plt.ylabel(r"defect density [nm$^{-3}$]")
+    handles, labels = plt.gca().get_legend_handles_labels()
+    if labels:
+        plt.legend(loc="lower right")
     plt.tight_layout(); plt.savefig(os.path.join(figs,"defects_time_series.png"), dpi=180)
 
 def fig_Tl_time(post, figs):

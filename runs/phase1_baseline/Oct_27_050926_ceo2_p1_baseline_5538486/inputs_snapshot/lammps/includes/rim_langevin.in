@@ -1,0 +1,46 @@
+# rim_langevin.in — x–y rim sponge (units metal)
+# Requires: -var RIM_WIDTH_NM (nm), RIM_GAMMA (ps^-1), RIM_TK (K), R0 (nm)
+
+# --- Parameters & box geometry ---
+variable rim_seed    equal 98765
+variable rim_wA      equal ${RIM_WIDTH_NM}*10.0      # Angstrom
+
+# Cache box bounds and lengths
+variable bxlo        equal xlo
+variable bxhi        equal xhi
+variable bylo        equal ylo
+variable byhi        equal yhi
+variable LxA         equal lx
+variable LyA         equal ly
+
+# Precompute slab faces (use v_ vars inside region commands)
+variable bxlo_hi     equal v_bxlo+v_rim_wA
+variable bxhi_lo     equal v_bxhi-v_rim_wA
+variable bylo_hi     equal v_bylo+v_rim_wA
+variable byhi_lo     equal v_byhi-v_rim_wA
+
+# Four edge slabs; union them
+region  rim_xlo      block  v_bxlo    v_bxlo_hi   INF INF   INF INF   units box
+region  rim_xhi      block  v_bxhi_lo v_bxhi      INF INF   INF INF   units box
+region  rim_ylo      block  INF INF   v_bylo      v_bylo_hi INF INF   units box
+region  rim_yhi      block  INF INF   v_byhi_lo   v_byhi    INF INF   units box
+region  rim_union    union  4 rim_xlo rim_xhi rim_ylo rim_yhi
+group   rim          region rim_union
+
+# --- Langevin sponge on rim only (with energy tally) ---
+# Note: langevin uses damping time tau, so tau = 1/gamma
+variable rim_tau_ps  equal 1.0/${RIM_GAMMA}
+fix f_rim rim langevin ${RIM_TK} ${RIM_TK} ${rim_tau_ps} ${rim_seed} zero yes tally yes
+
+# --- Sanity check: rim distance vs 3*r0 (arithmetic min without spaces) ---
+# LminA = (LxA < LyA ? LxA : LyA)  implemented as (cond)*A + (notcond)*B
+# (v_LxA<v_LyA) evaluates to 1 or 0; write without spaces to keep expression a single token
+variable LminA           equal (v_LxA<v_LyA)*v_LxA+(v_LxA>=v_LyA)*v_LyA
+variable halfminA        equal 0.5*v_LminA
+variable r_rim_start_A   equal v_halfminA-v_rim_wA
+variable r0A             equal ${R0}*10.0
+variable three_r0A       equal 3.0*v_r0A
+variable ok_margin       equal v_r_rim_start_A-v_three_r0A
+
+print "rim_langevin: LxA=${LxA} LyA=${LyA} rim_wA=${rim_wA}A  r_rim_start=${r_rim_start_A}A  3*r0=${three_r0A}A" screen yes
+if "${ok_margin} < 0.0" then "print \"WARNING: rim near heated core (r_rim_start < 3*r0). Consider smaller RIM_WIDTH_NM or a larger box.\" screen yes"

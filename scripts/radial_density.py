@@ -1,4 +1,26 @@
 #!/usr/bin/env python3
+"""
+Radial mass density ρ(r,t) in cylindrical shells around the box center,
++ R_track(t) pickoff as the first r where ρ < 0.9*ρ0 (far-field baseline).
+
+Inputs
+------
+--pattern runs/.../dumps/atoms.spike.*.lammpstrj
+  Expect frames with: id type x y z [vx vy vz] (vels not required here)
+
+Options
+-------
+--bin_A <float>                Radial bin width in Å (default 2.0)
+--smooth_window_bins <int>     Moving-average window over r (odd, default 5)
+--outdir <path>                Output directory (CSV + quick-look PNG)
+
+Outputs
+-------
+- rho_r_vs_frame.csv           rows: frames; cols: 'frame', r_centers [Å] as headers
+- R_track_vs_frame.csv         cols: frame, R_track_A
+- rho_meta.txt                 baseline ρ0, threshold, Lz, bins, smoothing
+- rho_profiles.png             quick-look overlays with pickoff markers
+"""
 import argparse, os, glob, re
 import numpy as np, pandas as pd
 import matplotlib
@@ -9,35 +31,11 @@ MASS_AMU = {1: 140.116, 2: 15.999}
 AMU_TO_G = 1.66053906660e-24
 A3_TO_CM3 = 1e-24  # 1 Å^3 = 1e-24 cm^3
 
-def read_frames(pattern):
-    paths = sorted(glob.glob(pattern))
-    for p in paths:
-        with open(p, "r") as f:
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                if line.startswith("ITEM: TIMESTEP"):
-                    # timestep line, then number
-                    _ts = int(f.readline().strip())
-                    _ = f.readline()             # ITEM: NUMBER OF ATOMS
-                    natoms = int(f.readline())
-                    _ = f.readline()             # ITEM: BOX BOUNDS ...
-                    xlo,xhi = map(float, f.readline().split()[:2])
-                    ylo,yhi = map(float, f.readline().split()[:2])
-                    zlo,zhi = map(float, f.readline().split()[:2])
-                    _ = f.readline()             # ITEM: ATOMS ...
-                    cols = f.readline().split()
-                    # The first data row already consumed! Fix by reading natoms-1 more, but we lost one row.
-                    # Safer: re-open and parse with a small state machine per block.
-                # If we hit a dump with multiple frames, better to parse block-wise.
-
 def _step_key(path: str) -> int:
     m = re.search(r"(\d+)(?:\D*)$", os.path.basename(path))
     return int(m.group(1)) if m else 0
 
 def parse_lammpstrj(pattern):
-    """Return a list of (box, ids, types, pos, vel) per frame across all files matching pattern in numeric order."""
     frames = []
     for path in sorted(glob.glob(pattern), key=_step_key):
         with open(path, "r") as f:
@@ -47,7 +45,7 @@ def parse_lammpstrj(pattern):
                     break
                 if not line.startswith("ITEM: TIMESTEP"):
                     continue
-                timestep = int(f.readline().strip())
+                _ = int(f.readline().strip())                       # timestep
                 assert f.readline().startswith("ITEM: NUMBER OF ATOMS")
                 natoms = int(f.readline().strip())
                 bounds_hdr = f.readline().strip()
@@ -57,30 +55,37 @@ def parse_lammpstrj(pattern):
                 zlo,zhi = map(float, f.readline().split()[:2])
                 atoms_hdr = f.readline().strip()
                 assert atoms_hdr.startswith("ITEM: ATOMS")
-                atom_cols = atoms_hdr.split()[2:]
-                # build index map
-                col_idx = {c:i for i,c in enumerate(atom_cols)}
+                cols = atoms_hdr.split()[2:]
+                idx = {c:i for i,c in enumerate(cols)}
                 need = ["id","type","x","y","z"]
-                has_v = all(k in col_idx for k in ["vx","vy","vz"])
-                ids = np.empty(natoms, dtype=np.int64)
+                missing = [k for k in need if k not in idx]
+                if missing:
+                    raise SystemExit(f"Dump missing columns {missing} in {path}")
+                ids   = np.empty(natoms, dtype=np.int64)
                 types = np.empty(natoms, dtype=np.int32)
-                pos = np.empty((natoms,3), dtype=np.float64)
-                vel = np.empty((natoms,3), dtype=np.float64) if has_v else None
+                pos   = np.empty((natoms,3), dtype=np.float64)
                 for i in range(natoms):
-                    parts = f.readline().split()
-                    ids[i]   = int(parts[col_idx["id"]])
-                    types[i] = int(parts[col_idx["type"]])
-                    pos[i,0] = float(parts[col_idx["x"]]); pos[i,1] = float(parts[col_idx["y"]]); pos[i,2] = float(parts[col_idx["z"]])
-                    if has_v:
-                        vel[i,0] = float(parts[col_idx["vx"]]); vel[i,1] = float(parts[col_idx["vy"]]); vel[i,2] = float(parts[col_idx["vz"]])
-                box = (xlo,xhi,ylo,yhi,zlo,zhi)
-                frames.append((box,ids,types,pos,vel))
+                    parts   = f.readline().split()
+                    ids[i]   = int(parts[idx["id"]])
+                    types[i] = int(parts[idx["type"]])
+                    pos[i,0] = float(parts[idx["x"]]); pos[i,1] = float(parts[idx["y"]]); pos[i,2] = float(parts[idx["z"]])
+                frames.append(((xlo,xhi,ylo,yhi,zlo,zhi), ids, types, pos))
     return frames
+
+def moving_average(y: np.ndarray, w: int) -> np.ndarray:
+    if w <= 1 or w % 2 == 0:  # enforce odd window
+        return y
+    pad = w // 2
+    ypad = np.pad(y, (pad,pad), mode="edge")
+    kern = np.ones(w, dtype=float) / w
+    return np.convolve(ypad, kern, mode="valid")
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pattern", required=True)
-    ap.add_argument("--bin_A", type=float, default=1.0)
+    ap.add_argument("--bin_A", type=float, default=2.0)
+    ap.add_argument("--smooth_window_bins", type=int, default=5,
+                    help="odd window length; 1 disables smoothing")
     ap.add_argument("--outdir", required=True)
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -90,7 +95,7 @@ def main():
         raise SystemExit(f"No frames matched pattern {args.pattern}")
 
     # Geometry from first frame
-    (xlo,xhi,ylo,yhi,zlo,zhi), ids0, types0, pos0, _ = frames[0]
+    (xlo,xhi,ylo,yhi,zlo,zhi), ids0, types0, pos0 = frames[0]
     Lx, Ly, Lz = xhi-xlo, yhi-ylo, zhi-zlo
     cx, cy = xlo+0.5*Lx, ylo+0.5*Ly
     r_max = 0.5*min(Lx, Ly) - args.bin_A
@@ -99,26 +104,30 @@ def main():
     r_centers = 0.5*(r_edges[:-1] + r_edges[1:])
     shell_vol = 2.0*np.pi*r_centers*args.bin_A*Lz     # Å^3 per shell
 
-    def rho_frame(box, types, pos):
+    def rho_frame(types, pos):
         r = np.sqrt((pos[:,0]-cx)**2 + (pos[:,1]-cy)**2)
-        masses_g = np.vectorize(MASS_AMU.get)(types) * AMU_TO_G
+        masses_g = np.array([MASS_AMU[int(t)] for t in types], dtype=float) * AMU_TO_G
         mass_sum_g, _ = np.histogram(r, bins=r_edges, weights=masses_g)
-        return mass_sum_g / (shell_vol * A3_TO_CM3)   # g/cm^3
+        rho = mass_sum_g / (shell_vol * A3_TO_CM3)   # g/cm^3
+        return rho
 
-    RHO = np.vstack([rho_frame(*fr[:1], fr[2], fr[3]) for fr in frames])  # (T,R)
-    far = max(1, int(0.9*nbins))
-    rho0 = RHO[0, far:].mean()
-    threshold = 0.9*rho0
+    RHO = np.vstack([rho_frame(fr[2], fr[3]) for fr in frames])  # (T,R)
 
+    # Light, time-independent smoothing over r (keeps elbow location stable)
+    if args.smooth_window_bins > 1 and args.smooth_window_bins % 2 == 1:
+        RHO = np.vstack([moving_average(row, args.smooth_window_bins) for row in RHO])
+
+    # Far-field baseline ρ0: average of last max(5, 10%) bins at t=0
+    tail = max(5, max(1, nbins//10))
+    rho0 = float(np.nanmean(RHO[0, -tail:]))
+    threshold = 0.9 * rho0
+
+    # R_track pickoff
     R_track = []
     for row in RHO:
-        mask = row < threshold
-        if mask.any():
-            idx = int(np.argmax(mask))
-            R_track.append(r_centers[idx])
-        else:
-            R_track.append(np.nan)
-    R_track = np.array(R_track)
+        below = np.nonzero(row < threshold)[0]
+        R_track.append(r_centers[below[0]] if below.size else np.nan)
+    R_track = np.asarray(R_track, dtype=float)
 
     # Save CSVs
     pd.DataFrame({"frame": np.arange(len(frames)), "R_track_A": R_track}).to_csv(
@@ -127,10 +136,13 @@ def main():
     df = pd.DataFrame(RHO, columns=[f"{rc:.3f}" for rc in r_centers])
     df.insert(0, "frame", np.arange(len(frames)))
     df.to_csv(os.path.join(args.outdir, "rho_r_vs_frame.csv"), index=False)
+
+    # Meta
     with open(os.path.join(args.outdir, "rho_meta.txt"), "w") as fh:
         fh.write(f"rho0_farfield_g_per_cm3 = {rho0:.6f}\n")
         fh.write(f"threshold = {threshold:.6f}\n")
         fh.write(f"r_bin_A = {args.bin_A}\n")
+        fh.write(f"smooth_window_bins = {args.smooth_window_bins}\n")
         fh.write(f"Lz_A = {Lz}\n")
         fh.write(f"nbins = {nbins}\n")
 
@@ -139,12 +151,13 @@ def main():
     T = len(frames)
     picks = sorted(set([0, max(1,T//3), max(2,2*T//3), T-1]))
     for f in picks:
-        ax.plot(r_centers/10.0, RHO[f], label=f"frame {f}")
+        ax.plot(r_centers/10.0, RHO[f], lw=2, label=f"frame {f}")
         if not np.isnan(R_track[f]):
+            ax.scatter([R_track[f]/10.0],[RHO[f, np.argmin(np.abs(r_centers - R_track[f]))]], s=28)
             ax.axvline(R_track[f]/10.0, ls="--", alpha=0.5)
-    ax.axhline(threshold, ls=":", alpha=0.7, label="0.9·rho0")
+    ax.axhline(threshold, ls=":", alpha=0.7, label="0.9·ρ0")
     ax.set_xlabel("r [nm]"); ax.set_ylabel("mass density [g/cm³]"); ax.legend()
-    fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "rho_profiles.png"), dpi=180)
+    fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "rho_profiles.png"), dpi=200)
 
 if __name__ == "__main__":
     main()

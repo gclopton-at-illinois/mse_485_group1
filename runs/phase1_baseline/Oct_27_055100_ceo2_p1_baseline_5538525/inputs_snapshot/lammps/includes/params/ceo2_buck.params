@@ -1,0 +1,12 @@
+# Buckingham coefficients for fluorite CeO2 (rigid-ion)
+# Form: A [eV], rho [Å], C [eV·Å^6], cutoff [Å]
+# Source: Sayle et al., Nanoscale 2011, 3, 1823–1837, Table 1. (O–O, Ce–O; Ce–Ce set to zero)
+
+# O–O
+pair_coeff 2 2  22764.30   0.149   27.89   ${rc_buck}
+
+# Ce–O
+pair_coeff 1 2   1986.83   0.351   20.40   ${rc_buck}
+
+# Ce–Ce (short-range off; Coulomb only). LAMMPS requires a rho even when A=C=0.
+pair_coeff 1 1      0.0     1.0      0.0   ${rc_buck}

@@ -35,7 +35,6 @@ def _step_key(path: str) -> int:
 
 def parse_sequence(pattern):
     frames=[]
-    # Sort files by the numeric step embedded in the filename
     for path in sorted(glob.glob(pattern), key=_step_key):
         with open(path,"r") as f:
             while True:
@@ -69,17 +68,22 @@ def main():
     ap.add_argument("--pattern", required=True)
     ap.add_argument("--ref", required=True)
     ap.add_argument("--frame_dt_ps", type=float, default=0.05)
-    ap.add_argument("--rcyl_nm", type=float, default=8.0)
-    ap.add_argument("--disp_thr_A", type=float, default=1.2)
+    # Accept either name for the cylinder radius to match both Phase-0 and Phase-1 scripts
+    ap.add_argument("--rcyl_nm", type=float, default=None)
+    ap.add_argument("--cyl_radius_nm", type=float, default=None)
+    ap.add_argument("--disp_thr_A", type=float, default=0.6, help="displacement threshold [Å]")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    # Reference
+    rcyl_nm = args.rcyl_nm if args.rcyl_nm is not None else args.cyl_radius_nm
+    if rcyl_nm is None:
+        rcyl_nm = 8.0  # Phase-1 default
+    # Reference frame
     (xlo,xhi,ylo,yhi,zlo,zhi), ids_ref, pos_ref = parse_single_frame(args.ref)
     Lx,Ly,Lz = xhi-xlo, yhi-ylo, zhi-zlo
     cx, cy   = xlo+0.5*Lx, ylo+0.5*Ly
-    rcyl_A   = args.rcyl_nm*A_PER_NM
-    vol_nm3  = np.pi*(args.rcyl_nm**2)*(Lz/A_PER_NM)
+    rcyl_A   = rcyl_nm*A_PER_NM
+    vol_nm3  = np.pi*(rcyl_nm**2)*(Lz/A_PER_NM)
 
     # Sequence
     seq = parse_sequence(args.pattern)
@@ -87,7 +91,7 @@ def main():
     times = np.arange(len(seq))*args.frame_dt_ps
     ndef  = np.zeros(len(seq), dtype=float)
 
-    for f, (box, ids, pos) in enumerate(seq):
+    for f, (_box, ids, pos) in enumerate(seq):
         idxs = np.array([id2i[int(i)] for i in ids], dtype=int)
         d = pos - pos_ref[idxs]
         d[:,0] = minimum_image(d[:,0], Lx)
@@ -100,11 +104,30 @@ def main():
 
     peak = float(ndef.max())
     i_peak = int(np.argmax(ndef))
+
     def first_cross(level):
         tail = np.where(ndef[i_peak:] <= level)[0]
         return (times[i_peak+tail[0]] if tail.size>0 else np.nan)
+
     t_half = first_cross(0.5*peak)
     t_1e   = first_cross(peak/np.e)
+
+    # plateau-based rise metrics used in your figure labelling
+    k = max(3, int(0.1*len(ndef)))
+    plateau = float(np.nanmean(ndef[-k:])) if ndef.size else np.nan
+    def x_time(frac):
+        if not np.isfinite(plateau): return np.nan
+        thr = frac*plateau
+        idx = np.where(ndef >= thr)[0]
+        if idx.size==0: return np.nan
+        j = int(idx[0]); 
+        if j==0: return float(times[0])
+        t0,t1 = times[j-1], times[j]
+        y0,y1 = ndef[j-1], ndef[j]
+        if y1==y0: return float(t1)
+        return float(t0 + (thr - y0)*(t1 - t0)/(y1 - y0))
+    t50 = x_time(0.5)
+    t90 = x_time(0.9)
 
     df = pd.DataFrame({"t_ps": times, "defect_density_nm^-3": ndef})
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
@@ -113,7 +136,9 @@ def main():
         fh.write(f"peak_defect_density_nm^-3 = {peak}\n")
         fh.write(f"t_half_ps = {t_half}\n")
         fh.write(f"t_1e_ps = {t_1e}\n")
-        fh.write(f"rcyl_nm = {args.rcyl_nm}\n")
+        fh.write(f"t50_ps = {t50}\n")
+        fh.write(f"t90_ps = {t90}\n")
+        fh.write(f"rcyl_nm = {rcyl_nm}\n")
         fh.write(f"disp_thr_A = {args.disp_thr_A}\n")
 
 if __name__ == "__main__":
