@@ -43,7 +43,10 @@ FRAME_DT_PS=${FRAME_DT_PS:-0.05}
 #   $POST/rho_meta.txt  (may include threshold, bin size, etc.)
 python "$REPO_ROOT/scripts/radial_density.py" \
   --pattern "$DUMPS/atoms.spike.*.lammpstrj" \
-  --bin_A 2.0 \
+  --bin_A "${BIN_A:-0.5}" \
+  --smooth_window_bins "${SMOOTH_WINDOW_BINS:-5}" \
+  --drop_inner_bins "${DROP_INNER_BINS:-1}" \
+  --pickoff_rmin_nm "${PICKOFF_RMIN_NM:-0.2}" \
   --outdir "$POST"
 
 # ---------------- 2) Defect density vs time (Wigner–Seitz proxy) ----------------
@@ -74,10 +77,20 @@ python "$REPO_ROOT/scripts/make_phase1_figs.py" \
 
 # ---------------- 5) Energy accounting sanity gate ----------------
 if [[ -f "$REPO_ROOT/scripts/energy_balance.py" ]]; then
-  python "$REPO_ROOT/scripts/energy_balance.py" \
-    --run "$RUN" \
-    --physics "$REPO_ROOT/config/physics.yaml" \
-    --tol 0.02 || true
+  THERMO_POST="$POST/thermo_energy.tsv"
+  if [[ -s "$THERMO_POST" ]]; then
+    echo "[p1-post] energy_balance using $THERMO_POST"
+    python "$REPO_ROOT/scripts/energy_balance.py" \
+      --run "$RUN" \
+      --physics "$REPO_ROOT/config/physics.yaml" \
+      --thermo "$THERMO_POST" \
+      --tol 0.02 || true
+  else
+    python "$REPO_ROOT/scripts/energy_balance.py" \
+      --run "$RUN" \
+      --physics "$REPO_ROOT/config/physics.yaml" \
+      --tol 0.02 || true
+  fi
 fi
 
 echo "[p1-post] Done. CSVs in $POST, figures in $FIGS"

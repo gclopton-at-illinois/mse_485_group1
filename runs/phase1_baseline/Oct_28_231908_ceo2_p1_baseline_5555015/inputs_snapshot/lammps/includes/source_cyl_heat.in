@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# source_cyl_heat.in — normalized cylindrical Gaussian source via fix heat
+# Deposits energy to lattice atoms so that ∫dt ∫2π r dr q(r,t) = S_e [eV/Å] * Lz [Å]
+# Expected -var: R0 (nm), SE (eV/Å), TAU_PS (ps)   ; units = metal
+# ---------------------------------------------------------------------------
+
+# ----- geometry and constants -----
+variable r0A      equal ${R0}*10.0
+variable sigmaA   equal v_r0A/sqrt(2.0)
+variable cx       equal 0.5*(xhi+xlo)
+variable cy       equal 0.5*(yhi+ylo)
+variable LzA      equal lz
+
+# choose a generous cutoff to capture ~99% of Gaussian mass
+variable rcutA    equal 3.0*v_r0A
+region   src      cylinder z v_cx v_cy v_rcutA INF INF units box
+group    src      region src
+
+# ----- time-normalized Gaussian pulse f(t) -----
+# f(t) = (1/(sqrt(2π)*tau)) * exp(-0.5*((time-t0)/tau)^2),  ∫ f dt = 1
+variable tau      equal ${TAU_PS}
+variable t0       equal 3.0*v_tau
+variable ft       equal (1.0/(sqrt(2.0*PI)*v_tau))*exp(-0.5*((time - v_t0)/v_tau)^2)
+
+# ----- total power (eV/ps) to deposit at current time -----
+# P_tot(t) = S_e [eV/Å] * Lz [Å] * f(t)  -> eV/ps
+variable Ptot     equal ${SE}*v_LzA*v_ft
+
+# ----- radial Gaussian weights and normalization over atoms in 'src' -----
+variable w atom exp(-((x - v_cx)*(x - v_cx) + (y - v_cy)*(y - v_cy)) / (2.0*v_sigmaA*v_sigmaA))
+compute  wsum all reduce sum v_w
+
+# per-atom flux so that sum_i q_i = Ptot
+variable q_atom atom v_Ptot * v_w / (c_wsum + 1.0e-30)
+
+# ----- apply heat every step to atoms inside the cylinder -----
+# NOTE: eflux is atom-style variable (eV/ps per atom), region limits affected atoms
+fix f_src all heat 1 v_q_atom region src
+# ---------------------------------------------------------------------------

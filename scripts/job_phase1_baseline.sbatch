@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J ceo2_p1_baseline
-#SBATCH -p mrsec
+#SBATCH -p eertekin
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -t 24:00:00
+#SBATCH -t 4:00:00
 #SBATCH -D /u/gclopton/scratch/lammps
 #SBATCH -o slurm-%j.out
 #SBATCH -e slurm-%j.err

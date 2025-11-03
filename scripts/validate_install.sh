@@ -2,9 +2,41 @@
 # LAMMPS feature & smoke-test validator (robust to stderr/help format)
 # Usage:
 #   scripts/validate_install.sh [/full/path/to/lmp]
+#
+# This script now attempts to load the same module stack used by jobs
+# (gcc/13.3.0, openmpi/5.0.1, fftw/3.3.10) automatically if Lmod is
+# available. Set VALIDATOR_LOAD_MODULES=0 to disable, or override the
+# module list with VALIDATOR_MODULES.
+#
 # Exits nonzero on failure; prints brief diagnostics.
 
 set -Eeuo pipefail
+
+# --- optional: load job-like modules via Lmod ---
+VALIDATOR_LOAD_MODULES=${VALIDATOR_LOAD_MODULES:-1}
+VALIDATOR_MODULES=${VALIDATOR_MODULES:-"gcc/13.3.0 openmpi/5.0.1 fftw/3.3.10"}
+
+if [[ "$VALIDATOR_LOAD_MODULES" == "1" ]]; then
+  # Ensure 'module' is defined (Lmod)
+  if ! type module >/dev/null 2>&1; then
+    # Try standard Lmod init locations
+    for init in \
+      /usr/share/lmod/lmod/init/bash \
+      /etc/profile.d/lmod.sh \
+      /etc/profile.d/modules.sh; do
+      [[ -r "$init" ]] && source "$init" && break || true
+    done
+  fi
+  if type module >/dev/null 2>&1; then
+    # Silence Lmod debug if enabled in this shell
+    unset LMOD_SH_DBG_ON || true
+    module purge || true
+    # Load declared module stack; ignore missing ones to keep validator portable
+    for m in $VALIDATOR_MODULES; do
+      module load "$m" || true
+    done
+  fi
+fi
 
 # --- locate lmp ---
 if [[ -n "${1-}" ]]; then
@@ -27,6 +59,12 @@ echo "Validating: $LMP"
 # --- 1) Header capability checks (robust) ---
 HELP_FILE="$(mktemp)"; trap 'rm -f "$HELP_FILE"' EXIT
 "$LMP" -h 2>&1 >"$HELP_FILE" || true
+# Detect dynamic linker/library errors upfront to avoid misleading greps
+if grep -qi 'error while loading shared libraries' "$HELP_FILE"; then
+  echo "ERROR: $LMP failed to start due to missing shared libraries:" >&2
+  cat "$HELP_FILE" >&2
+  exit 11
+fi
 
 echo -n "[hdr] EXTRA-FIX present? "  ; grep -q "EXTRA-FIX"  "$HELP_FILE" && echo "yes" || { echo "NO"; exit 2; }
 echo -n "[hdr] KSPACE present?    "  ; grep -q "KSPACE"     "$HELP_FILE" && echo "yes" || { echo "NO"; exit 3; }
@@ -35,6 +73,11 @@ echo -n "[hdr] EXTRA-DUMP present?"; grep -q "EXTRA-DUMP" "$HELP_FILE" && echo "
 echo -n "[hdr] TTM fix styles?    "
 grep -Eq '^[[:space:]]*ttm($|/grid|/mod)[[:space:]]' "$HELP_FILE" \
   && echo "yes" || { echo "NO"; miss=1; }
+
+# Explicitly assert presence of fix python/invoke (often needed for scripted sources)
+echo -n "[hdr] fix python/invoke?  "
+grep -Eq '^[[:space:]]*python/invoke([[:space:]]|$)' "$HELP_FILE" \
+  && echo "yes" || { echo "NO"; exit 5; }
 
 echo -n "[hdr] thermo_style yaml? "
 grep -Eq '^\* Thermo styles|^[[:space:]]*yaml([[:space:]]|$)' "$HELP_FILE" \

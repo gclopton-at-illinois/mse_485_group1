@@ -12,6 +12,8 @@ Options
 -------
 --bin_A <float>                Radial bin width in Å (default 2.0)
 --smooth_window_bins <int>     Moving-average window over r (odd, default 5)
+--drop_inner_bins <int>        Skip this many innermost bins in the *plot only* (CSV unaffected; default 0)
+--pickoff_rmin_nm <float>      Ignore r < this when picking first ρ < 0.9·ρ0 (default 0.0 nm)
 --outdir <path>                Output directory (CSV + quick-look PNG)
 
 Outputs
@@ -73,10 +75,10 @@ def parse_lammpstrj(pattern):
     return frames
 
 def moving_average(y: np.ndarray, w: int) -> np.ndarray:
-    if w <= 1 or w % 2 == 0:  # enforce odd window
+    if w <= 1 or w % 2 == 0:  # enforce odd window; 1 disables smoothing
         return y
     pad = w // 2
-    ypad = np.pad(y, (pad,pad), mode="edge")
+    ypad = np.pad(y, (pad, pad), mode="reflect")
     kern = np.ones(w, dtype=float) / w
     return np.convolve(ypad, kern, mode="valid")
 
@@ -86,6 +88,10 @@ def main():
     ap.add_argument("--bin_A", type=float, default=2.0)
     ap.add_argument("--smooth_window_bins", type=int, default=5,
                     help="odd window length; 1 disables smoothing")
+    ap.add_argument("--drop_inner_bins", type=int, default=0,
+                    help="skip this many inner bins in the quick-look plot only")
+    ap.add_argument("--pickoff_rmin_nm", type=float, default=0.0,
+                    help="ignore r < this value when searching for ρ < 0.9·ρ0")
     ap.add_argument("--outdir", required=True)
     args = ap.parse_args()
     os.makedirs(args.outdir, exist_ok=True)
@@ -102,7 +108,9 @@ def main():
     nbins = max(1, int(np.floor(r_max/args.bin_A)))
     r_edges = np.linspace(0.0, nbins*args.bin_A, nbins+1)
     r_centers = 0.5*(r_edges[:-1] + r_edges[1:])
-    shell_vol = 2.0*np.pi*r_centers*args.bin_A*Lz     # Å^3 per shell
+    r_in  = r_edges[:-1]
+    r_out = r_edges[1:]
+    shell_vol = np.pi * (r_out**2 - r_in**2) * Lz
 
     def rho_frame(types, pos):
         r = np.sqrt((pos[:,0]-cx)**2 + (pos[:,1]-cy)**2)
@@ -122,11 +130,12 @@ def main():
     rho0 = float(np.nanmean(RHO[0, -tail:]))
     threshold = 0.9 * rho0
 
-    # R_track pickoff
+    # R_track pickoff (optionally ignore inner-most region)
+    start_idx = int(np.searchsorted(r_centers/10.0, args.pickoff_rmin_nm))
     R_track = []
     for row in RHO:
-        below = np.nonzero(row < threshold)[0]
-        R_track.append(r_centers[below[0]] if below.size else np.nan)
+        below = np.nonzero(row[start_idx:] < threshold)[0]
+        R_track.append(r_centers[start_idx + below[0]] if below.size else np.nan)
     R_track = np.asarray(R_track, dtype=float)
 
     # Save CSVs
@@ -143,21 +152,32 @@ def main():
         fh.write(f"threshold = {threshold:.6f}\n")
         fh.write(f"r_bin_A = {args.bin_A}\n")
         fh.write(f"smooth_window_bins = {args.smooth_window_bins}\n")
+        fh.write(f"drop_inner_bins = {args.drop_inner_bins}\n")
+        fh.write(f"pickoff_rmin_nm = {args.pickoff_rmin_nm}\n")
         fh.write(f"Lz_A = {Lz}\n")
         fh.write(f"nbins = {nbins}\n")
 
-    # Quick-look figure
+    # Quick-look figure (optionally drop inner bins from the plot only)
     fig, ax = plt.subplots()
     T = len(frames)
-    picks = sorted(set([0, max(1,T//3), max(2,2*T//3), T-1]))
+    picks = sorted(set([0, max(1, T//3), max(2, 2*T//3), T-1]))
+    plot_start = max(0, int(args.drop_inner_bins))
+
     for f in picks:
-        ax.plot(r_centers/10.0, RHO[f], lw=2, label=f"frame {f}")
+        ax.plot((r_centers/10.0)[plot_start:], RHO[f, plot_start:], lw=2, label=f"frame {f}")
         if not np.isnan(R_track[f]):
-            ax.scatter([R_track[f]/10.0],[RHO[f, np.argmin(np.abs(r_centers - R_track[f]))]], s=28)
-            ax.axvline(R_track[f]/10.0, ls="--", alpha=0.5)
+            # Only draw marker/line if the pickoff radius is in the plotted range
+            if plot_start < len(r_centers) and R_track[f] >= r_centers[plot_start]:
+                j = int(np.argmin(np.abs(r_centers - R_track[f])))
+                ax.scatter([R_track[f]/10.0], [RHO[f, j]], s=28)
+                ax.axvline(R_track[f]/10.0, ls="--", alpha=0.5)
+
     ax.axhline(threshold, ls=":", alpha=0.7, label="0.9·ρ0")
-    ax.set_xlabel("r [nm]"); ax.set_ylabel("mass density [g/cm³]"); ax.legend()
-    fig.tight_layout(); fig.savefig(os.path.join(args.outdir, "rho_profiles.png"), dpi=200)
+    ax.set_xlabel("r [nm]")
+    ax.set_ylabel("mass density [g/cm³]")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.outdir, "rho_profiles.png"), dpi=200)
 
 if __name__ == "__main__":
     main()
