@@ -1,7 +1,0 @@
-# config/figure_style.yaml
-font: DejaVu Sans
-fontsize_pt: 10
-axes_labelsize_pt: 10
-tick_labelsize_pt: 9
-line_width_pt: 1.0
-

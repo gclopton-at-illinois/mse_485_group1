@@ -1,34 +1,15 @@
 #!/usr/bin/env python3
-"""
-Compute lattice core temperature T_l(t) from LAMMPS dumps (metal units),
-restricting atoms to a cylinder r <= r_core_nm about the box center.
 
-Inputs (required)
------------------
---pattern runs/.../dumps/atoms.spike.*.lammpstrj
-  Each frame must have columns: id type x y z vx vy vz
-
-Outputs
--------
-CSV at --out with columns: t_ps, Tl_core_K
-Also writes a tiny meta file alongside the CSV with basic parameters.
-
-Optional (future)
------------------
-If a sibling file 'Te_core.csv' appears later (e.g., from TTM grid averaging),
-make_phase1_figs.py will automatically overlay Te and Tl. This script does not
-attempt to parse the TTM grid itself (Phase-1 keeps atoms-only here).
-"""
 
 import argparse, os, glob, re
 import numpy as np, pandas as pd
 
-# ---- constants for LAMMPS metal units ----
+# ---- constants for LAMMPS metal units ---
 KB_eV_per_K = 8.617333262e-5      # eV/K
 MVV2E       = 1.0364269e-4        # eV per (amu * (Å/ps)^2)
 A_PER_NM    = 10.0
 
-# Type → mass (amu) map (matches input deck: mass 1 140.116; mass 2 15.999)
+# Type → mass (amu) map (matchss input deck: mass 1 140.116; mass 2 15.999)
 MASS_AMU = {1: 140.116, 2: 15.999}
 
 def _step_key(path: str) -> int:
@@ -115,7 +96,7 @@ def main():
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     df.to_csv(args.out, index=False)
 
-    # Meta for reproducibility
+
     with open(args.out.replace(".csv",".meta.txt"), "w") as m:
         m.write(f"r_core_nm = {args.r_core_nm}\n")
         m.write(f"frame_dt_ps = {args.frame_dt_ps}\n")

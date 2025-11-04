@@ -1,28 +1,4 @@
 #!/usr/bin/env python3
-"""
-Radial mass density ρ(r,t) in cylindrical shells around the box center,
-+ R_track(t) pickoff as the first r where ρ < 0.9*ρ0 (far-field baseline).
-
-Inputs
-------
---pattern runs/.../dumps/atoms.spike.*.lammpstrj
-  Expect frames with: id type x y z [vx vy vz] (vels not required here)
-
-Options
--------
---bin_A <float>                Radial bin width in Å (default 2.0)
---smooth_window_bins <int>     Moving-average window over r (odd, default 5)
---drop_inner_bins <int>        Skip this many innermost bins in the *plot only* (CSV unaffected; default 0)
---pickoff_rmin_nm <float>      Ignore r < this when picking first ρ < 0.9·ρ0 (default 0.0 nm)
---outdir <path>                Output directory (CSV + quick-look PNG)
-
-Outputs
--------
-- rho_r_vs_frame.csv           rows: frames; cols: 'frame', r_centers [Å] as headers
-- R_track_vs_frame.csv         cols: frame, R_track_A
-- rho_meta.txt                 baseline ρ0, threshold, Lz, bins, smoothing
-- rho_profiles.png             quick-look overlays with pickoff markers
-"""
 import argparse, os, glob, re
 import numpy as np, pandas as pd
 import matplotlib
@@ -75,7 +51,7 @@ def parse_lammpstrj(pattern):
     return frames
 
 def moving_average(y: np.ndarray, w: int) -> np.ndarray:
-    if w <= 1 or w % 2 == 0:  # enforce odd window; 1 disables smoothing
+    if w <= 1 or w % 2 == 0:  # enforce odd window; 1 disables smoothng
         return y
     pad = w // 2
     ypad = np.pad(y, (pad, pad), mode="reflect")
@@ -121,7 +97,7 @@ def main():
 
     RHO = np.vstack([rho_frame(fr[2], fr[3]) for fr in frames])  # (T,R)
 
-    # Light, time-independent smoothing over r (keeps elbow location stable)
+    # time-independent smoothing over r (keeps elbow location stable)
     if args.smooth_window_bins > 1 and args.smooth_window_bins % 2 == 1:
         RHO = np.vstack([moving_average(row, args.smooth_window_bins) for row in RHO])
 
@@ -130,7 +106,7 @@ def main():
     rho0 = float(np.nanmean(RHO[0, -tail:]))
     threshold = 0.9 * rho0
 
-    # R_track pickoff (optionally ignore inner-most region)
+    # R_track pickoff
     start_idx = int(np.searchsorted(r_centers/10.0, args.pickoff_rmin_nm))
     R_track = []
     for row in RHO:
@@ -157,7 +133,7 @@ def main():
         fh.write(f"Lz_A = {Lz}\n")
         fh.write(f"nbins = {nbins}\n")
 
-    # Quick-look figure (optionally drop inner bins from the plot only)
+    # Quick-look figure
     fig, ax = plt.subplots()
     T = len(frames)
     picks = sorted(set([0, max(1, T//3), max(2, 2*T//3), T-1]))

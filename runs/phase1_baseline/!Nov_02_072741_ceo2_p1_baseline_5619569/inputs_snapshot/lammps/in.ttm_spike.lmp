@@ -1,0 +1,50 @@
+# --- TTM spike stage: NVE on interior + USER-TTM electrons (Phase 1) ---
+print "=== TTM spike stage: NVE (interior) + USER-TTM electron field ===" screen yes
+
+group        interior subtract all rim
+variable     r0_A equal ${R0}*10.0
+print        "TTM source (atoms via heat): r0=${R0} nm (= ${r0_A} A), Se=${SE} eV/A, tau=${TAU_PS} ps" screen yes
+
+fix          f_nve   interior nve
+
+# ... your existing ttm/grid initialization stays as-is ...
+variable     CE0     equal 1.0
+variable     RHOE0   equal 1.0
+variable     KE0     equal 1.0
+variable     GP      equal 5.0
+variable     GS      equal 0.0
+variable     V0      equal 1.0
+variable     iNX     equal ceil(lx/1.0)
+variable     iNY     equal ceil(ly/1.0)
+variable     iNZ     equal ceil(lz/1.0)
+fix          f_ttm   interior ttm/grid 12345 ${CE0} ${RHOE0} ${KE0} ${GP} ${GS} ${V0} ${iNX} ${iNY} ${iNZ}
+
+run          0 post no
+
+# ---------------- normalized cylindrical source (atoms) ----------------
+# Deposits Ptot(t) = Se*Lz * f(t); radial Gaussian with R0; see include for details
+include      inputs/lammps/includes/source_cyl_heat.in
+# ----------------------------------------------------------------------
+
+# energy logging (unchanged)
+variable     Ee   equal f_f_ttm[1]
+variable     ERIM equal f_f_rim
+
+fix f_p1ener all print ${th_every} "${s} ${Ee} ${ET} ${ERIM}" file ${OUTDIR}/post/thermo_energy.tsv screen no title "step E_electron_eV E_lattice_eV E_langevin_eV_cum"
+
+variable     nspike equal ${NSTEPS}-${neq}
+print        "Spike steps (nspike) = ${nspike}" screen yes
+
+dump         dspike all custom 100 ${OUTDIR}/dumps/atoms.spike.*.lammpstrj id type x y z vx vy vz q
+dump_modify  dspike sort id
+
+run          ${nspike}
+undump       dspike
+
+# cleanup (also remove source)
+unfix        f_p1ener
+unfix        f_src
+unfix        f_nve
+unfix        f_ttm
+
+print        "=== Spike complete; end of Phase 1 baseline shot ===" screen yes

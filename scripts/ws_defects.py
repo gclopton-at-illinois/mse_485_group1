@@ -112,7 +112,7 @@ def main():
     t_half = first_cross(0.5*peak)
     t_1e   = first_cross(peak/np.e)
 
-    # plateau-based rise metrics used in your figure labelling
+    # plateau-based rise metrics used in my figure labelling
     k = max(3, int(0.1*len(ndef)))
     plateau = float(np.nanmean(ndef[-k:])) if ndef.size else np.nan
     def x_time(frac):

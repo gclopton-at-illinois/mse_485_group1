@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p eertekin                  # <-- change if your group uses a different partition
+#SBATCH -p eertekin                  
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -c 4
@@ -27,7 +27,7 @@ module load openmpi/5.0.1-gcc-13.3.0 || module load openmpi/5.0.1 || module load
 module load cmake || true
 module load fftw3 || module load fftw || true
 
-# --- Optional: load/activate your Conda env so 'make install-python' can drop the wheel into it ---
+# --- Optional: load/activate Conda env so 'make install-python' can drop the wheel into it ---
 module load miniconda3/24.9.2 || true
 if command -v conda >/dev/null 2>&1; then
   source "$(conda info --base)/etc/profile.d/conda.sh"

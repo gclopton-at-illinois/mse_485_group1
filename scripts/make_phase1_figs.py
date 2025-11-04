@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""
-make_phase1_figs.py — Canonical three-panel figures for Phase 1:
-  1) rho(r,t) overlays with R_track pickoffs marked
-  2) defect density vs time with peak, t50, t90, and optional t_{1/2}, t_{1/e}
-  3) Te/Tl core overlay (falls back to Tl-only if Te absent)
 
-Inputs (from --post directory):
-  - rho_r_vs_frame.csv              (rows: frame; cols: 'frame', r_centers [Å] as headers)
-  - R_track_vs_frame.csv            (cols: frame, R_track_A)
-  - rho_meta.txt                    (optional: 'threshold=<value>', etc.)
-  - ndef_vs_time.csv                (cols: t_ps, n_def_nm3)
-  - ndef_vs_time.meta.txt           (optional: 't_half_ps=...', 't_1e_ps=...')
-  - Tl_core.csv                     (cols: t_ps, Tl_core_K)
-  - Te_core.csv (optional)          (cols: t_ps, Te_core_K)
-
-Outputs (in --figs directory):
-  - rho_radial_overlays.png
-  - defects_time_series.png
-  - Te_Tl_core.png
-"""
 import argparse, os, numpy as np, pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -49,7 +30,7 @@ def fig_rho_radial(post, figs):
         len(frames)-1
     ]))
 
-    # Threshold line from meta (optional)
+    # Threshold line from meta 
     thr = None
     meta = os.path.join(post, "rho_meta.txt")
     if os.path.exists(meta):
@@ -153,7 +134,6 @@ def fig_TeTl_time(post, figs):
         t_ref = None
 
     if te is not None:
-        # If Te time grid differs a bit, just plot as-is
         plt.plot(te["t_ps"].to_numpy(), te["Te_core_K"].to_numpy(), lw=2, label=r"$T_e$ (core)")
 
     plt.xlabel("t [ps]")

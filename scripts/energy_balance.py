@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-r"""
-energy_balance.py — Phase-1 sanity check for energy accounting.
-
-What this script does
----------------------
-1) Finds a thermo source for a given run directory, preferring (in order):
-     <RUN>/post/thermo_energy.tsv
-     <RUN>/logs/log.lammps      (thermo block will be extracted)
-     <RUN>/dumps/thermo.tsv
-   You can override with --thermo /path/to/file.
-
-2) Reads the thermo table robustly:
-   - If given a LAMMPS log, it extracts the lines after the "Step ..." header
-     until the table ends, and parses those lines with whitespace separation.
-   - Otherwise, it parses the entire file as whitespace-separated (no deprecated
-     delim_whitespace; we use sep=r"\s+").
-
-3) If no explicit 'etotal' column exists, derive it from physically meaningful components:
-     etotal_eV = E_electron_eV + E_lattice_eV [+ any *_eV_cum reservoirs if present]
-   (units don’t matter for relative drift; we report the formula used.)
-
-4) Computes energy-drift stats and writes JSON to:
-     <RUN>/post/energy_balance.json
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -42,7 +17,9 @@ except Exception:  # pragma: no cover
     yaml = None
 
 
-# ---------------------- path selection ----------------------
+# ##############################################################
+# ############### 1.) Path selection ##########################
+# ##############################################################
 
 
 def sniff_thermo_path(run_dir: Path, override: Optional[Path]) -> Path:
@@ -67,6 +44,10 @@ def sniff_thermo_path(run_dir: Path, override: Optional[Path]) -> Path:
     # Nothing non-empty; return the preferred path so the caller can emit a helpful message.
     return candidates[0]
 
+
+# ##############################################################
+# ############### 2.) Reading thermo table ####################
+# ##############################################################
 
 # ---------------------- parsing helpers ----------------------
 
@@ -107,9 +88,9 @@ def _extract_thermo_block(text: str) -> Tuple[Optional[List[str]], Optional[str]
 
 def read_table(path: Path) -> pd.DataFrame:
     """
-    Read thermo data from a whitespace-separated file or extract from a LAMMPS log.
+    Read thermo data from a whitespace-separated file or extract from a LAMMPS log
 
-    Raises:
+    Raise Error:
       pd.errors.EmptyDataError for missing/empty files.
     """
     if (not path.is_file()) or path.stat().st_size == 0:
@@ -122,21 +103,26 @@ def read_table(path: Path) -> pd.DataFrame:
         header, body = _extract_thermo_block(text)
         if header and body:
             return pd.read_csv(io.StringIO(body), sep=r"\s+", engine="python", names=list(header))
-        # Fall back to attempting to parse the full log (best effort).
+        # Fall back to attempting to parse the full log.
         return pd.read_csv(io.StringIO(text), sep=r"\s+", engine="python", comment="#")
 
-    # Generic whitespace-separated table.
+    # whitespace-separated table.
     return pd.read_csv(io.StringIO(text), sep=r"\s+", engine="python", comment="#")
 
 
-# ---------------------- column normalization ----------------------
+# ---------------------- normalize colum n names ------------
 
+# Expand aliases to accept headers like "ET(eV)", "PE(eV)", "KE(eV)" from print titles
 _CANONICAL = {
-    "etotal": {"etotal", "TotEng", "total_energy", "TotalEnergy", "Etot", "E_tot", "Etotals"},
+    "etotal": {
+        "etotal", "TotEng", "total_energy", "TotalEnergy", "Etot", "E_tot", "Etotals",
+        "ET(eV)", "ET"
+    },
+    "pe": {"pe", "PotEng", "E_pot", "Epot", "poteng", "PE(eV)", "PE"},
+    "ke": {"ke", "KinEng", "E_kin", "Ekin", "kineng", "KE(eV)", "KE"},
     "step": {"step", "Step", "STEP"},
     "time": {"time", "Time", "t", "time_ps"},
-    # keep these unrenamed; we just detect them for derivation
-    # "E_electron_eV", "E_lattice_eV", "E_*_eV_cum" will be used as-is
+    # Other collumns (like E_electron_eV, E_lattice_eV, *_eV_cum) used as-is
 }
 
 
@@ -170,7 +156,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# ---------------------- physics config ----------------------
+# ---------------------- physics config -------
 
 
 def load_physics(yaml_path: Optional[Path]) -> Dict:
@@ -189,22 +175,26 @@ def load_physics(yaml_path: Optional[Path]) -> Dict:
 
 def derive_etotal_if_needed(df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    Ensure df has an 'etotal' column; if absent, try to synthesize it from components.
+    Ensure df has an 'etotal' column. If absent try to synthesize it from components
 
-    Strategy:
-      - If 'etotal' already present (possibly via normalization of 'TotEng'), do nothing.
-      - Else, look for: E_electron_eV, E_lattice_eV, and any *_eV_cum reservoirs
-        (e.g., E_langevin_eV_cum, E_boundary_eV_cum, E_cyl_sink_eV_cum, etc.)
-        and set etotal = sum of those columns.
+      - If 'etotal' already present (possibly via normalization of 'TotEng') do nothing
+      - Else, if 'pe' and 'ke' exist, set etotal = pe + ke
+      - Else, look for: E_electron_eV, E_lattice_eV, and any *_eV_cum reservoirs 
+        (for example, E_langevin_eV_cum, E_boundary_eV_cum, E_cyl_sink_eV_cum, etc.). Set etotal = sum of those columns
 
     Returns (df_with_etotal, formula_string_or_None).
     """
     if "etotal" in df.columns:
         return df, "etotal (provided)"
 
-    cols = set(df.columns)
+    # Fallback 0: common thermo columns
+    if "pe" in df.columns and "ke" in df.columns:
+        df2 = df.copy()
+        df2["etotal"] = df2["pe"].astype(float) + df2["ke"].astype(float)
+        return df2, "pe + ke"
 
-    # Base components that should both exist
+    # Fallback 1: electron + lattice (+ reservoirs)
+    cols = set(df.columns)
     base = []
     if "E_electron_eV" in cols:
         base.append("E_electron_eV")
@@ -212,7 +202,6 @@ def derive_etotal_if_needed(df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[st
         base.append("E_lattice_eV")
 
     if len(base) == 2:
-        # Optional cumulative reservoirs to include if present
         extras = [
             "E_langevin_eV_cum",
             "E_boundary_eV_cum",
@@ -229,7 +218,7 @@ def derive_etotal_if_needed(df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[st
     return df, None
 
 
-# ---------------------- statistics ----------------------
+# ---------------------- statistics ----------------- -----
 
 
 def compute_etotal_stats(df: pd.DataFrame) -> Dict[str, float]:
@@ -251,7 +240,7 @@ def compute_etotal_stats(df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
-# ---------------------- main ----------------------
+# ---------------------- main ----------------
 
 
 def parse_args() -> argparse.Namespace:
@@ -281,7 +270,7 @@ def main() -> None:
 
     thermo_path = sniff_thermo_path(run_dir, args.thermo)
 
-    # Try to read; if empty/missing, write a minimal JSON and exit quietly.
+    # Try to read. if empty/missing, write a minimal JSON and exit quietly.
     try:
         df_raw = read_table(thermo_path)
     except pd.errors.EmptyDataError as e:
@@ -289,25 +278,25 @@ def main() -> None:
         payload = {
             "measured": {"thermo_path": str(thermo_path), "n_rows": 0, "columns": []},
             "tolerances": {"etotal_rel_tol": args.tol},
-            "ok": True,
+            "ok": True,  # non-blocking
             "physics": load_physics(args.physics),
-            "note": "thermo file missing or empty; check LAMMPS export or pass --thermo",
+            "note": "thermo file missing or empty. check LAMMPS export or pass --thermo",
         }
         out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         sys.exit(0)
 
-    # Normalize easy synonyms (e.g., TotEng -> etotal)
+    # Normalize easy synonyms (for example, ET(eV) -> etotal; PE(eV) -> pe; KE(eV) -> ke)
     df = normalize_columns(df_raw)
 
-    # Ensure we have an etotal, deriving if needed
+    # Ensure we have an etotal, or derive if needed
     df, formula = derive_etotal_if_needed(df)
     if "etotal" not in df.columns:
         raise SystemExit(
             "[energy-balance] Could not find or derive 'etotal'. "
             f"Available columns: {list(df.columns)}. "
-            "Expected either an 'etotal'/'TotEng' column, or the pair "
-            "'E_electron_eV' and 'E_lattice_eV' (optionally plus *_eV_cum). "
-            "You can also pass --thermo to point at a file that contains TotEng."
+            "Expected either an 'etotal'/'TotEng' column, or ('pe' and 'ke'), "
+            "or the pair 'E_electron_eV' and 'E_lattice_eV' (optionally plus *_eV_cum). "
+            "You can also pass --thermo to point at a file that contains total energy."
         )
 
     # Compute stats
@@ -316,7 +305,7 @@ def main() -> None:
     # Load physics (optional)
     physics_cfg = load_physics(args.physics)
 
-    # Prepare JSON payload
+    # Prepare JSON
     payload = {
         "measured": {
             "thermo_path": str(thermo_path),
@@ -334,7 +323,7 @@ def main() -> None:
     # Write
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    # Brief console summary
+    # console summary
     rel = stats["rel_change"]
     sign = "+" if rel >= 0 else "-"
     pct = abs(rel) * 100.0

@@ -1,0 +1,70 @@
+# --- TTM spike stage: NVE on interior + USER–TTM electron field (Phase 1) ---
+print "=== TTM spike stage: NVE (interior) + USER–TTM electron field ===" screen yes
+
+# Interior = all minus rim (rim is defined in includes/rim_langevin.in from in.main.lmp)
+group        interior subtract all rim
+variable     r0_A equal ${R0}*10.0
+print        "TTM source (atoms via heat): r0=${R0} nm (= ${r0_A} A), Se=${SE} eV/A, tau=${TAU_PS} ps" screen yes
+
+# Integrate lattice (interior only)
+fix          f_nve   interior nve
+
+# --- USER–TTM electron grid (your existing parameters) ---
+variable     CE0     equal 3.12e-7
+variable     RHOE0   equal 1.0
+variable     KE0     equal 1.0
+variable     GP      equal 2.1
+variable     GS      equal 0.0
+variable     V0      equal 1.0
+variable     iNX     equal ceil(lx/1.0)
+variable     iNY     equal ceil(ly/1.0)
+variable     iNZ     equal ceil(lz/1.0)
+fix          f_ttm   interior ttm/grid 12345 ${CE0} ${RHOE0} ${KE0} ${GP} ${GS} ${V0} ${iNX} ${iNY} ${iNZ} set 300.0
+
+run          0 post no
+
+# ---------------- normalized cylindrical source (atoms) ----------------
+# Deposits Ptot(t) = Se*Lz * f(t); radial Gaussian with R0.
+include      inputs/lammps/includes/source_cyl_heat.in
+# ----------------------------------------------------------------------
+
+# ---------------- Core lattice-temperature monitor (Tl in K) ----------
+# COM-free kinetic temperature of atoms inside a central cylinder of radius r_core_nm.
+# Writes one value per MD step to ${OUTDIR}/post/Tl_core_lmp.dat (two '#' header lines then data).
+variable     r_core_nm  equal 0.8
+variable     r_core_A   equal ${r_core_nm}*10.0
+variable     xmid       equal 0.5*(xlo+xhi)
+variable     ymid       equal 0.5*(ylo+yhi)
+region       core_cyl   cylinder z ${xmid} ${ymid} ${r_core_A} EDGE EDGE units box
+group        core       dynamic  all region core_cyl every 1
+compute      Tcore      core temp/com
+fix          Tcore_out  core ave/time 100 1 100 c_Tcore file ${OUTDIR}/post/Tl_core_lmp.dat
+# ----------------------------------------------------------------------
+
+# Energy accounting (electron/lattice/rim)
+variable     Ee   equal f_f_ttm[1]
+variable     ERIM equal f_f_rim
+fix f_p1ener all print ${th_every} "${s} ${T} ${P} ${PE} ${KE} ${ET} ${Ee} ${ERIM}" file ${OUTDIR}/post/thermo_energy.tsv screen no title "step T(K) P(bar) PE(eV) KE(eV) ET(eV) E_electron_eV E_langevin_eV_cum"
+
+# Spike length and run
+variable     nspike equal ${NSTEPS}-${neq}
+print        "Spike steps (nspike) = ${nspike}" screen yes
+
+# NOTE: spike atom dumps are defined in in.main.lmp (with reset_timestep 0).
+# If you do NOT dump in in.main.lmp, uncomment the two lines below (keep single lines, unique dump ID).
+# dump         dspike all custom 100 ${OUTDIR}/dumps/atoms.spike.*.lammpstrj id type x y z vx vy vz q
+# dump_modify  dspike sort id first yes
+
+run          ${nspike}
+
+# Cleanup
+unfix        f_p1ener
+unfix        f_src
+unfix        f_nve
+unfix        f_ttm
+unfix        Tcore_out
+uncompute    Tcore
+group        core delete
+# undump       dspike
+
+print        "=== Spike complete; end of Phase 1 baseline shot ===" screen yes

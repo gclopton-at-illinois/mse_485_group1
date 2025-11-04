@@ -56,7 +56,7 @@ export OMPI_MCA_btl=self,vader,tcp
 echo "Validating: $LMP"
 "$LMP" -h | head -n 5 || true
 
-# --- 1) Header capability checks (robust) ---
+# --- 1) Header capability checks ---
 HELP_FILE="$(mktemp)"; trap 'rm -f "$HELP_FILE"' EXIT
 "$LMP" -h 2>&1 >"$HELP_FILE" || true
 # Detect dynamic linker/library errors upfront to avoid misleading greps

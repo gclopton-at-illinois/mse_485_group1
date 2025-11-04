@@ -1,9 +1,0 @@
-# inputs/ttm/source_profile.yaml
-pulse:
-  type: gaussian
-  tau_ps: 0.2
-radial:
-  type: gaussian
-  r0_nm: 2.0
-Se_keV_per_nm: 20.0
-

@@ -1,2 +1,0 @@
-runs, status, error
-Oct_28_231908_ceo2_p1_baseline_5555015,failed,"[ERR] line 56: bash -x ""${RUNNER}"" --lmp ""${LMP_BIN}"" --config ""${PHYS}"" --run-dir ""${RUN_DIR}"""
