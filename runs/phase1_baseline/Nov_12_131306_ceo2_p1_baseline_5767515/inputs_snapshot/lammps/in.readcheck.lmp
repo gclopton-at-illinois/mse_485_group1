@@ -1,0 +1,7 @@
+log ${OUTDIR}/logs/log.lammps
+echo both
+units metal
+atom_style charge
+boundary p p f
+read_data inputs/structure/data.ceo2_4x4x8nm.lmp
+run 0

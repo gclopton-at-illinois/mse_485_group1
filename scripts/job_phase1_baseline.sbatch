@@ -1,9 +1,10 @@
 #!/bin/bash
-#SBATCH -J ceo2_p1_baseline
-#SBATCH -p eertekin
+#SBATCH -J ceo2_p1_baseline_32_cores
+#SBATCH -p eng-instruction
+#SBATCH -A 25fa-mse4852a-eng
 #SBATCH -N 1
-#SBATCH -n 1
-#SBATCH -t 72:00:00
+#SBATCH --ntasks-per-node=32
+#SBATCH -t 08:00:00
 #SBATCH -D /u/gclopton/scratch/lammps
 #SBATCH -o slurm-%j.out
 #SBATCH -e slurm-%j.err

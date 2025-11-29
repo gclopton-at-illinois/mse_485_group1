@@ -192,18 +192,29 @@ if [[ $DRY_RUN -eq 1 ]]; then
   exit 0
 fi
 
-# -------- Launch under SLURM (default -n 1 like Phase 0) --------
+# -------- Launch with MPI (force OpenMPI's mpirun) --------
+# Always prefer OpenMPI's mpirun on this cluster to avoid PMIx/PMI2 mismatches
+# that spawn multiple singleton processes. Disable CPU binding to prevent
+# binding policy conflicts with Slurm allocations.
 LAUNCH=()
-if command -v srun >/dev/null 2>&1 && [[ -n "${SLURM_JOB_ID:-}" ]]; then
-  LAUNCH=(srun -u -n "${SLURM_NTASKS:-1}")
+# Default to SLURM_NTASKS when running under Slurm; otherwise 1
+NTASKS="${SLURM_NTASKS:-1}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+if command -v mpirun >/dev/null 2>&1; then
+  LAUNCH=(mpirun --bind-to none -np "${NTASKS}")
+else
+  echo "[WARN] mpirun not found; running in serial. Install/load OpenMPI to run in parallel." >&2
+  LAUNCH=()
 fi
 
+# Keep line-buffered stdout/err when not under mpirun; avoid wrapping the MPI
+# application with stdbuf, which can confuse binding diagnostics.
 STD_BUF=()
-if command -v stdbuf >/dev/null 2>&1; then
+if command -v stdbuf >/dev/null 2>&1 && [[ ${#LAUNCH[@]} -eq 0 ]]; then
   STD_BUF=(stdbuf -oL -eL)
 fi
 
-"${LAUNCH[@]}" "${STD_BUF[@]}" "${LAMMPS_CMD[@]}" >"$SCREEN" 2>&1 || {
+"${LAUNCH[@]}" "${LAMMPS_CMD[@]}" >"$SCREEN" 2>&1 || {
   rc=$?
   echo "LAMMPS exited with RC=$rc" >&2
   echo "---- screen.out (tail) ----" >&2; tail -n 120 "$SCREEN" >&2 || true

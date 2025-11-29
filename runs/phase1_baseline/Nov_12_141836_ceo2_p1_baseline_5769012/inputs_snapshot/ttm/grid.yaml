@@ -1,0 +1,11 @@
+# inputs/ttm/grid.yaml
+domain:
+  r_max_nm: 50.0
+  z_max_nm: 200.0
+grid:
+  dr_nm: 0.5
+  dz_nm: 2.0
+substepping:
+  dt_e_ps: 0.001
+  dt_l_ps: 0.001
+
