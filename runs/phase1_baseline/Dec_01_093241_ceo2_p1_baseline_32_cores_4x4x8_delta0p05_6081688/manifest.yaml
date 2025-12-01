@@ -1,0 +1,22 @@
+phase: 1
+units: metal
+dt_ps: 0.0005
+nsteps: 37000
+thermo_every: 100
+source:
+  r0_nm: 1
+  Se_eV_per_A: 45
+  tau_ps: 0.2
+ttm:
+  g0_W_m3K: 1.1e+17
+paths:
+  datafile: lammps/inputs/structure/data.ceo2_4x4x8nm_delta0p05.lmp
+  ke_curve_file: inputs/ttm/ke_reference.csv
+  Ce_curve_file: inputs/ttm/Ce_reference.csv
+  grid_file: inputs/ttm/grid.yaml
+boundaries: { x: p, y: p, z: p }
+seeds:
+  velocity: 505676510
+  vacancy:  797543670
+snapshot_dir: /u/gclopton/scratch/lammps/runs/phase1_baseline/Dec_01_093241_ceo2_p1_baseline_32_cores_4x4x8_delta0p05_6081688/inputs_snapshot
+timestamp: 20251201_093242

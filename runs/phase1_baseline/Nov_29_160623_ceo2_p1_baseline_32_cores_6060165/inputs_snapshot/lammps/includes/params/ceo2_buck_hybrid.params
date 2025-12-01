@@ -1,0 +1,14 @@
+# ------------------------------------------------------------
+# Buckingham coefficients for fluorite CeO2 (rigid-ion) — hybrid syntax
+# Form: pair_coeff i j buck/coul/long  A[eV]  rho[Å]  C[eV·Å^6]  rc[Å]
+# Source: Sayle et al., Nanoscale 2011, 3, 1823–1837, Table 1 (Ce4+–O2−, O2−–O2−; Ce–Ce short-range = 0)
+# ------------------------------------------------------------
+
+# O–O
+pair_coeff 2 2 buck/coul/long  22764.30   0.149   27.89   ${rc_buck}
+
+# Ce–O
+pair_coeff 1 2 buck/coul/long   1986.83   0.351   20.40   ${rc_buck}
+
+# Ce–Ce (short-range off; Coulomb only). rho may be any positive number when A=C=0.
+pair_coeff 1 1 buck/coul/long      0.0     1.0      0.0   ${rc_buck}

@@ -1,0 +1,14 @@
+log ${OUTDIR}/logs/log.lammps
+echo both
+units metal
+atom_style charge
+boundary p p f
+read_data inputs/structure/data.ceo2_4x4x8nm.lmp
+
+# kspace with slab correction for nonperiodic z
+pair_style buck/coul/long 12.0
+# (pair_coeff lines normally live in your include; for the check we just probe kspace)
+kspace_style pppm 1.0e-5
+kspace_modify slab 3.0
+
+run 0

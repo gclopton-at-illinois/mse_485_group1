@@ -1,0 +1,67 @@
+{
+  "parent_data": "inputs/structure/data.ceo2_4x4x8nm.lmp",
+  "output_data": "inputs/structure/data.ceo2_4x4x8nm_delta0p0099.lmp",
+  "rng_seed": 1,
+  "parent_counts": {
+    "N_atoms": 11520,
+    "N_Ce": 3840,
+    "N_O": 7680
+  },
+  "type_mapping": {
+    "Ce": 1,
+    "O": 2
+  },
+  "vacancy_spec": {
+    "requested_delta": 0.01,
+    "requested_n_vac": null,
+    "requested_vac_frac": null
+  },
+  "vacancy_results": {
+    "N_vac": 38,
+    "removed_o_indices": [
+      4051,
+      4106,
+      4496,
+      4790,
+      4794,
+      4868,
+      4942,
+      5402,
+      5746,
+      5807,
+      5931,
+      6166,
+      6226,
+      6368,
+      6782,
+      6935,
+      6973,
+      7080,
+      7311,
+      7320,
+      7456,
+      7752,
+      7965,
+      8049,
+      8771,
+      9613,
+      9614,
+      9887,
+      10108,
+      10134,
+      10176,
+      10262,
+      10473,
+      10490,
+      10780,
+      11097,
+      11107,
+      11337
+    ],
+    "N_atoms_new": 11482,
+    "N_Ce_new": 3840,
+    "N_O_new": 7642,
+    "delta_eff": 0.009895833333333437
+  },
+  "note": "Ce/O identification is based on LAMMPS atom types; chemical symbols reset to Ce/O; atom_style=charge, units=metal."
+}

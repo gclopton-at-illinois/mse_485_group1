@@ -1,0 +1,96 @@
+# in.main.lmp — Phase 1 (baseline, line-flushed)
+
+echo            both
+units           ${UNITS}
+atom_style      charge
+boundary        ${BX} ${BY} ${BZ}
+
+# --- structure & masses (defines the box) ---
+read_data       ${DATAFILE}
+mass            1 140.116
+mass            2 15.999
+
+# ensure per-run subdirs exist on the compute node
+shell           mkdir -p ${OUTDIR}/logs
+shell           mkdir -p ${OUTDIR}/dumps
+shell           mkdir -p ${OUTDIR}/post
+shell           mkdir -p ${OUTDIR}/restart
+
+# --- temperature compute (valid before any run) ---
+compute         t_all all temp
+
+# --- thermo cadence from YAML ---
+variable        th_every equal ${THERMO_EVERY}
+thermo          ${THERMO_EVERY}
+thermo_style    custom step time temp press pe ke evdwl ecoul etotal
+thermo_modify   flush yes
+thermo_modify   temp t_all
+
+# --- simple timeseries you can tail (written DURING runs) ---
+variable s   equal step
+variable T   equal c_t_all
+variable P   equal press
+variable PE  equal pe
+variable KE  equal ke
+variable ET  equal etotal
+variable THFILE string ${OUTDIR}/dumps/thermo.tsv
+
+# Write a header line once (plain 'print' has no 'title', so just print the header)
+print "step T(K) P(bar) PE(eV) KE(eV) ET(eV)" file ${THFILE} screen no
+
+# Emit one data line at step 0 so post-tools can do finite differences cleanly
+run 0 post no
+print "${s} ${T} ${P} ${PE} ${KE} ${ET}" file ${THFILE} screen no append yes
+
+# Then append a line every th_every steps during dynamics
+fix tsv all print ${th_every} "${s} ${T} ${P} ${PE} ${KE} ${ET}" file ${THFILE} screen no append yes
+
+# --- neighbor / timestep ---
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+timestep        ${DT}            # ps (units metal)
+
+# --- electrostatics & short-range interactions ---
+include         inputs/lammps/includes/kspace_pppm.in
+include         inputs/lammps/includes/pair_ceo2_buck.in
+
+# Enable ZBL overlay conditionally from YAML (USE_ZBL = 1 or 0)
+variable use_zbl equal ${USE_ZBL}
+if "${use_zbl} > 0" then "include inputs/lammps/includes/pair_zbl_overlay.in"
+
+# Rim sponge (uses RIM_WIDTH_NM/RIM_GAMMA/RIM_TK; 'tally yes' is set inside)
+include         inputs/lammps/includes/rim_langevin.in
+
+# ------------------------- STAGES -------------------------
+
+# ---- Stage A: NVT pre-equilibration (duration configured inside in.equil.lmp) ----
+# (That file typically defines fix nvt and 'run ...'; it will leave the system at ~300 K.)
+variable neq equal 0
+include         inputs/lammps/in.equil.lmp
+
+# ---- Stage B: Spike run (USER-TTM) starting at t = 0 ps with dense early dumps ----
+# Reset the global timestep so the spike segment begins at Step = 0 (t = 0 ps).
+# This makes dump file indices and postprocessing time axes simple and gives you sub-ps frames.
+reset_timestep  0
+
+# (Optional) wipe any stale spike dumps from previous runs
+shell           rm -f ${OUTDIR}/dumps/atoms.spike.*.lammpstrj
+
+# --- Dump cadence for spike segment ---
+# Default frame spacing in ps; override at launch with:  -var frame_dt_ps 0.02
+variable        frame_dt_ps equal 0.05
+# If provided from YAML/CLI as FRAME_DT_PS, you can mirror it with:
+#   variable frame_dt_ps equal ${FRAME_DT_PS}
+# (only if FRAME_DT_PS is guaranteed to be defined)
+
+# Convert desired frame spacing (ps) to a stride in timesteps
+variable        dump_stride equal ceil(v_frame_dt_ps/${DT})
+if "${dump_stride} < 1" then "variable dump_stride equal 1"
+
+# Per-frame dump starting at the very first spike step (Step=0)
+dump            dspike all custom ${dump_stride} ${OUTDIR}/dumps/atoms.spike.*.lammpstrj id type x y z
+dump_modify     dspike first yes sort id flush yes
+
+# Hand control to the spike include: it should define fix ttm/yaml and 'run ...'
+# Any t0 in your TTM YAML is now interpreted relative to this reset (t = 0 at spike onset).
+include         inputs/lammps/in.ttm_spike.lmp

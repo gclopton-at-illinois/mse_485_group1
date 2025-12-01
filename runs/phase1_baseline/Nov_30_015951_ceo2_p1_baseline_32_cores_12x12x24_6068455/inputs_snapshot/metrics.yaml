@@ -1,0 +1,168 @@
+# config/metrics.yaml
+
+inputs:
+  # Filenames/patterns expected inside each run directory
+  files:
+    thermo:        "dumps/thermo.dat"          # LAMMPS thermo output (per-step)
+    ttm_core:      "dumps/ttm_core.dat"        # small file with core-cell Te/Tl vs step
+    traj_dump:     "dumps/traj.dump"           # atom dump for WS defects & rho(r,t)
+    structure_ref: "inputs/structure/data.ceo2_12x12x20nm.lmp"  # reference lattice for WS
+
+
+
+parsing:
+  # Map raw column names to canonical keys used by analysis code.
+  # These should match your LAMMPS thermo custom style and your ttm_core writer.
+  thermo_columns:
+    step:        "Step"
+    temperature: "Temp"          # lattice temperature (Tl) if present in thermo
+    pressure:    "Press"
+    etotal:      "TotEng"
+    pe:          "PotEng"
+    ke:          "KinEng"
+    # Add more as needed; unknown columns are ignored.
+  ttm_core_columns:
+    step: "Step"
+    Te:   "Te_core"              # electron temperature at core cell
+    Tl:   "Tl_core"              # lattice temperature at core cell
+  # Atom dump requirements (for WS & radial density)
+  dump:
+    format: "lammpstrj"
+    needs:
+      - "id"
+      - "type"
+      - "x"
+      - "y"
+      - "z"
+
+sampling:
+  # Strides for reading (keep light for Phase 0; tighten after)
+  stride:
+    thermo:    1
+    ttm_core:  1
+    dump_ws:   10        # WS defects every N frames
+    dump_rho:  10        # radial density every N frames
+  # Spatial binning for radial profiles
+  radial_density:
+    origin: "auto_core"  # "auto_core" | [x,y,z] in box units
+    r_max_ang: 60.0
+    dr_ang:    0.5
+    smoothing:
+      kind: "savitzky_golay"   # "none"|"savitzky_golay"
+      window_bins: 7
+      polyorder: 2
+
+defects:
+  method: "wigner_seitz"        # WS occupancy vs reference lattice sites
+  # Types must match your LAMMPS type IDs
+  types:
+    ce_type: 1
+    o_type:  2
+  ws:
+    # How to build reference sites for WS counting
+    reference:
+      file:   "inputs/structure/data.ceo2_12x12x20nm.lmp"
+      supercell_from_dump_box: true     # match dump box to reference replication
+    # Defect tallying options
+    count:
+      report:
+        - "vacancies"                   # missing occupant at a site
+        - "interstitials"               # extra atoms not at a reference site
+        - "frenkel_pairs"               # paired vacancy+interstitial
+      per_species: true
+    # Post-processing
+    smoothing:
+      window_frames: 5                  # moving average for time series
+      center: true
+
+metrics:
+  # Scalar metrics computed from time series
+  core_temperatures:
+    peak_Te:
+      window: "spike"      # "equil"|"spike"|null (null = full run)
+      reducer: "max"
+    peak_Tl:
+      window: "spike"
+      reducer: "max"
+    time_of_peak_Te_fs:
+      window: "spike"
+      reducer: "argmax_time"
+    quench_time_fs:
+      # time after peak when |Te-Tl| <= delta_T_tol for a sustained dwell
+      delta_T_tol_K: 50.0
+      dwell_fs: 100.0
+      window: "spike"
+  energy_sanity:
+    # Estimate energy conservation over windows
+    etotal_drift_ppm:
+      window: "equil"
+      method: "linear_drift_ppm"  # slope/mean × 1e6
+  defects_summary:
+    peak_defects:
+      series: "frenkel_pairs_total"
+      reducer: "max"
+      window: "spike"
+    residual_defects_end:
+      series: "frenkel_pairs_total"
+      reducer: "last"
+      window: null
+  radial_structure:
+    elbow_radius_ang:
+      # location of max |d rho / dr| after spike (shell edge)
+      window: "spike"
+      method: "max_gradient_radius"
+    void_fraction_percent:
+      # integrate deficit vs initial rho within r <= r_void_max
+      r_void_max_ang: 20.0
+
+sanity_checks:
+  require_files:
+    - "dumps/thermo.dat"
+    - "dumps/ttm_core.dat"
+  tolerances:
+    # Guardrails to fail fast if something is wildly off
+    temperature:
+      max_Te_K:  50000.0
+      max_Tl_K:  15000.0
+    energy:
+      max_drift_ppm_equil: 500.0
+  actions:
+    on_missing_file: "warn"     # "error"|"warn"|"skip"
+    on_sanity_fail:  "warn"
+
+exports:
+  # Time series to write as CSV for plotting/inspection
+  series:
+    - name: "core_temperatures"
+      file: "analysis/series/core_Te_Tl.csv"
+      columns: ["time_fs", "Te_core", "Tl_core"]
+    - name: "defects_time_series"
+      file: "analysis/series/defects_ws.csv"
+      columns: ["time_fs", "vacancies_total", "interstitials_total", "frenkel_pairs_total"]
+    - name: "rho_radial"
+      file: "analysis/series/rho_radial.npz"   # compressed (r grid + rho(r,t))
+      columns: ["r_ang", "t_fs", "rho"]        # writer defines the NPZ keys
+  # One-row scalar metrics per run
+  tables:
+    - name: "run_metrics"
+      file: "analysis/metrics/run_metrics.csv"
+      fields:
+        - "peak_Te_K"
+        - "time_of_peak_Te_fs"
+        - "peak_Tl_K"
+        - "quench_time_fs"
+        - "etotal_drift_ppm_equil"
+        - "peak_frenkel_pairs"
+        - "residual_frenkel_pairs_end"
+        - "elbow_radius_ang"
+        - "void_fraction_percent"
+  # Figure hooks (rendering style lives in config/figure_style.yaml)
+  figures:
+    te_tl_quench: "figures/phase1/Te_Tl_quench.png"
+    defects_series: "figures/phase1/defects_time_series.png"
+    rho_radial_overlays: "figures/phase1/rho_radial_overlays.png"
+
+reproducibility:
+  rng_seed: 20251016   # only used if any randomized subsampling is added later
+  write_provenance: true
+  provenance_file: "analysis/provenance/metrics_provenance.json"
