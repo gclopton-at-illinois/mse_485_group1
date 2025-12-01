@@ -38,5 +38,6 @@ variable wnorm equal c_wsum_src
 variable q_atom atom v_Ptot*v_w/(v_wnorm+1.0e-30)
 
 # ----- apply heat every step to atoms inside the cylinder -----
-fix f_src all heat 1 v_q_atom region src
+#fix f_src all heat 1 v_q_atom region src
+fix f_src interior heat 1 v_q_atom region src
 # ---------------------------------------------------------------------------

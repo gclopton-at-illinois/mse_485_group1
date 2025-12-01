@@ -14,6 +14,7 @@ mass            2 15.999
 shell           mkdir -p ${OUTDIR}/logs
 shell           mkdir -p ${OUTDIR}/dumps
 shell           mkdir -p ${OUTDIR}/post
+shell           mkdir -p ${OUTDIR}/restart
 
 # --- temperature compute (valid before any run) ---
 compute         t_all all temp

@@ -13,7 +13,7 @@
 #     is effectively centered at t = 0 ps; no separate t0 is required.
 
 structure:
-  data_path: inputs/structure/data.ceo2_4x4x8nm.lmp   # prebuilt fluorite CeO2 (δ=0)
+  data_path: inputs/structure/data.ceo2_10x10x24nm.lmp  # prebuilt fluorite CeO2 (δ=0)
   ce_type: 1                                          # LAMMPS atom-type index for Ce
   o_type:  2                                          # LAMMPS atom-type index for O
 
@@ -28,14 +28,14 @@ boundaries:
 
 time:
   dt_fs: 0.5                                          # MD time step Δt in femtoseconds
-  t_total_ps: 18.5                                    # total simulated time (driver computes nsteps = T_tot/dt) was 20.0
+  t_total_ps: 27.5                                    # total simulated time (driver computes nsteps = T_tot/dt) was 20.0
 
 source:                                               # cylindrical electron source used by USER–TTM
-  r0_nm: 3.0                                          # was 4.5
-  Se_eV_per_A: 45.0                                   # was 27.0
+  r0_nm: 2.0                                          # was 4.5
+  Se_eV_per_A: 160.0                                   # was 27.0
   pulse:
     shape: gaussian                                   # time envelope f_t(t), normalized to ∫ f_t dt = 1
-    tau_ps: 0.20                                      # was 0.25 (sharper → higher peak)
+    tau_ps: 0.15                                      # was 0.25 (sharper → higher peak)
   normalization: "radial × time normalized so lineal energy deposition integrates to Se"
 
 ttm:                                                  # two-temperature model parameters (electron field)
@@ -43,7 +43,7 @@ ttm:                                                  # two-temperature model pa
   Ce_curve_file: inputs/ttm/Ce_reference.csv          # C_e(T_e) [J·m^-3·K^-1]
   coupling:
     model: constant
-    g0_W_m3K: 1.1e17                                  # was 7.4e16 (modest increase)
+    g0_W_m3K: 1.5e17                                  # was 7.4e16 (modest increase)
   grid_file: inputs/ttm/grid.yaml                     # geometry & electron sub-stepping (locked in Phase 2)
 
 forcefield:                                           # short-/long-range interactions (set via includes)
@@ -52,6 +52,6 @@ forcefield:                                           # short-/long-range intera
   kspace_pppm:
     accuracy: 1.0e-4                                  # PPPM force accuracy target
   rim_langevin:                                       # x–y sponge to absorb waves
-    width_nm: 0.2
+    width_nm: 1.5
     gamma_ps_inv: 0.3                                 # was 1.0 (reduce over-drain)
     target_K: 300                                     # lattice rim target temperature

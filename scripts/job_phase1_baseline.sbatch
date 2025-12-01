@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J ceo2_p1_baseline_32_cores
+#SBATCH -J ceo2_p1_baseline_32_cores_12x12x24
 #SBATCH -p eng-instruction
 #SBATCH -A 25fa-mse4852a-eng
 #SBATCH -N 1

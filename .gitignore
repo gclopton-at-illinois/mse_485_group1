@@ -58,6 +58,7 @@ runs/*                # ignore everything under runs/ by default
 !runs/**/figures/**
 
 # still ignore all heavy artifacts anywhere under runs/
+runs/**/restart/
 runs/**/dumps/
 runs/**/post/
 runs/**/thermo.dat

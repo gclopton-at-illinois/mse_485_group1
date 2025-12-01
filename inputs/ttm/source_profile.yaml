@@ -4,6 +4,6 @@ pulse:
   tau_ps: 0.2
 radial:
   type: gaussian
-  r0_nm: 2.0
+  r0_nm: 2.5
 Se_keV_per_nm: 20.0
 

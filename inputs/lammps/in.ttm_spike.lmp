@@ -50,6 +50,8 @@ fix f_p1ener all print ${th_every} "${s} ${T} ${P} ${PE} ${KE} ${ET} ${Ee} ${ERI
 variable     nspike equal ${NSTEPS}-${neq}
 print        "Spike steps (nspike) = ${nspike}" screen yes
 
+restart      5000 ${OUTDIR}/restart/spikeA.rst ${OUTDIR}/restart/spikeB.rst
+
 # NOTE: spike atom dumps are defined in in.main.lmp (with reset_timestep 0).
 # If you do NOT dump in in.main.lmp, uncomment the two lines below (keep single lines, unique dump ID).
 # dump         dspike all custom 100 ${OUTDIR}/dumps/atoms.spike.*.lammpstrj id type x y z vx vy vz q
